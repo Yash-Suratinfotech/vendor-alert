@@ -3,7 +3,7 @@
 client_id = "4904a82815541c3776f87b3268f92d70"
 name = "Vendor Alert"
 handle = "vendor-alert"
-application_url = "https://candles-released-territory-tech.trycloudflare.com"
+application_url = "https://references-scoring-solving-picks.trycloudflare.com"
 embedded = true
 
 [build]
@@ -13,12 +13,22 @@ include_config_on_deploy = true
 [webhooks]
 api_version = "2025-07"
 
+# Product webhooks
+[[webhooks.subscriptions]]
+topics = ["products/create", "products/update", "products/delete"]
+uri = "/api/webhooks/products"
+
+# App lifecycle webhooks
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled"]
+uri = "/api/webhooks/app-uninstalled"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products, read_products, read_orders"
+scopes = "write_products, read_products, read_orders, read_customers"
 
 [auth]
-redirect_urls = ["https://candles-released-territory-tech.trycloudflare.com/auth/callback", "https://candles-released-territory-tech.trycloudflare.com/auth/shopify/callback", "https://candles-released-territory-tech.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://references-scoring-solving-picks.trycloudflare.com/auth/callback", "https://references-scoring-solving-picks.trycloudflare.com/auth/shopify/callback", "https://references-scoring-solving-picks.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

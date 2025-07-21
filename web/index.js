@@ -1,19 +1,28 @@
-// @ts-check
+// web/index.js
 import { join } from "path";
 import { readFileSync } from "fs";
 import express from "express";
 import serveStatic from "serve-static";
 
+import db from "./db.js";
 import shopify from "./shopify.js";
 import productCreator from "./product-creator.js";
-import PrivacyWebhookHandlers from "./privacy.js";
 
 // Import existing routes
 import storeRouter from "./routes/store.js";
 import vendorRouter from "./routes/vendor.js";
 import webhookRouter from "./routes/webhook.js";
+import productsRouter from "./routes/products.js";
+import ordersRouter from "./routes/orders.js";
 
-import db from "./db.js";
+// Import webhook routes
+import PrivacyWebhookHandlers from "./webhook/privacy.js";
+import ProductsWebhookHandlers from "./webhook/products.js";
+import OrdersWebhookHandlers from "./webhook/orders.js";
+import AppWebhookHandlers from "./webhook/app.js";
+
+// Import data sync service
+import dataSyncService from "./services/dataSyncService.js";
 
 const PORT = parseInt(
   process.env.BACKEND_PORT || process.env.PORT || "3000",
@@ -46,27 +55,46 @@ app.get(
 
         // Check if shop already exists
         const existingShop = await client.query(
-          "SELECT id FROM shops WHERE shop_domain = $1",
+          "SELECT id, initial_sync_completed FROM shops WHERE shop_domain = $1",
           [session.shop]
         );
+
+        let isNewInstall = false;
 
         if (existingShop.rows.length === 0) {
           // Insert new shop
           await client.query(
-            "INSERT INTO shops (shop_domain, access_token) VALUES ($1, $2) ON CONFLICT (shop_domain) DO UPDATE SET access_token = EXCLUDED.access_token",
+            `INSERT INTO shops (shop_domain, access_token, shopify_shop_id) 
+             VALUES ($1, $2, $3)`,
+            [session.shop, session.accessToken, null]
+          );
+          isNewInstall = true;
+          console.log("🆕 New shop registered:", session.shop);
+        } else {
+          // Update existing shop
+          await client.query(
+            `UPDATE shops 
+             SET access_token = $2, updated_at = NOW() 
+             WHERE shop_domain = $1`,
             [session.shop, session.accessToken]
           );
-
-          console.log(
-            "🆕 New shop initialized with default settings:",
-            session.shop
-          );
+          console.log("🔄 Existing shop updated:", session.shop);
         }
 
         await client.query("COMMIT");
         client.release();
+
+        // Perform initial sync for new installations
+        if (isNewInstall || !existingShop.rows[0]?.initial_sync_completed) {
+          console.log("🚀 Starting initial data sync for:", session.shop);
+
+          // Run initial sync in background (don't wait for completion)
+          dataSyncService.performInitialSync(session).catch((error) => {
+            console.error("❌ Initial sync failed:", error);
+          });
+        }
       } catch (error) {
-        console.error("Error initializing shop settings:", error);
+        console.error("❌ Error during OAuth callback:", error);
       }
     } else {
       console.log("⚠️ No session found in OAuth callback!");
@@ -76,14 +104,23 @@ app.get(
   }
 );
 
+// Webhook processing with enhanced handlers
 app.post(
   shopify.config.webhooks.path,
-  shopify.processWebhooks({ webhookHandlers: PrivacyWebhookHandlers })
+  shopify.processWebhooks({
+    webhookHandlers: {
+      ...PrivacyWebhookHandlers,
+      ...ProductsWebhookHandlers,
+      ...OrdersWebhookHandlers,
+      ...AppWebhookHandlers,
+    },
+  })
 );
 
 // If you are adding routes outside of the /api path, remember to
 // also add a proxy rule for them in web/frontend/vite.config.js
 
+// API routes - require authentication
 app.use("/api/*", shopify.validateAuthenticatedSession());
 
 app.use(express.json());
@@ -92,6 +129,65 @@ app.use(express.json());
 app.use("/api/store", storeRouter);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/webhooks", webhookRouter);
+app.use("/api/products", productsRouter);
+app.use("/api/orders", ordersRouter);
+
+// Add sync status endpoint
+app.get("/api/sync/status", async (req, res) => {
+  try {
+    const session = res.locals.shopify.session;
+    const shopDomain = session.shop;
+
+    const result = await db.query(
+      `
+      SELECT 
+        initial_sync_completed,
+        (SELECT COUNT(*) FROM products WHERE shop_domain = $1) as product_count,
+        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as order_count,
+        (SELECT COUNT(*) FROM vendors WHERE shop_domain = $1) as vendor_count,
+        (SELECT COUNT(*) FROM sync_logs WHERE shop_domain = $1 AND status = 'running') as running_syncs
+      FROM shops WHERE shop_domain = $1
+    `,
+      [shopDomain]
+    );
+
+    const stats = result.rows[0] || {};
+
+    res.json({
+      success: true,
+      initialSyncCompleted: stats.initial_sync_completed || false,
+      counts: {
+        products: parseInt(stats.product_count) || 0,
+        orders: parseInt(stats.order_count) || 0,
+        vendors: parseInt(stats.vendor_count) || 0,
+      },
+      hasRunningSyncs: parseInt(stats.running_syncs) > 0,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching sync status:", error);
+    res.status(500).json({ error: "Failed to fetch sync status" });
+  }
+});
+
+// Legacy product routes (for compatibility)
+app.get("/api/products/count", async (req, res) => {
+  try {
+    const session = res.locals.shopify.session;
+    const shopDomain = session.shop;
+
+    const result = await db.query(
+      "SELECT COUNT(*) as count FROM products WHERE shop_domain = $1",
+      [shopDomain]
+    );
+
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (error) {
+    console.error("❌ Error fetching product count:", error);
+    res.status(500).json({ error: "Failed to fetch product count" });
+  }
+});
+
+app.post("/api/products", productCreator);
 
 app.use(shopify.cspHeaders());
 app.use(serveStatic(STATIC_PATH, { index: false }));
