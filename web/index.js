@@ -10,6 +10,8 @@ import PrivacyWebhookHandlers from "./privacy.js";
 
 // Import existing routes
 import storeRouter from "./routes/store.js";
+import vendorRouter from "./routes/vendor.js";
+import webhookRouter from "./routes/webhook.js";
 
 import db from "./db.js";
 
@@ -38,7 +40,6 @@ app.get(
     if (session) {
       console.log("✅ OAuth Callback - Shop authenticated:", session.shop);
 
-      // Initialize default settings for new shops
       try {
         const client = await db.getClient();
         await client.query("BEGIN");
@@ -89,36 +90,8 @@ app.use(express.json());
 
 // Mount API routes
 app.use("/api/store", storeRouter);
-
-app.get("/api/products/count", async (_req, res) => {
-  const client = new shopify.api.clients.Graphql({
-    session: res.locals.shopify.session,
-  });
-
-  const countData = await client.request(`
-    query shopifyProductCount {
-      productsCount {
-        count
-      }
-    }
-  `);
-
-  res.status(200).send({ count: countData.data.productsCount.count });
-});
-
-app.post("/api/products", async (_req, res) => {
-  let status = 200;
-  let error = null;
-
-  try {
-    await productCreator(res.locals.shopify.session);
-  } catch (e) {
-    console.log(`Failed to process products/create: ${e.message}`);
-    status = 500;
-    error = e.message;
-  }
-  res.status(status).send({ success: status === 200, error });
-});
+app.use("/api/vendor", vendorRouter);
+app.use("/api/webhooks", webhookRouter);
 
 app.use(shopify.cspHeaders());
 app.use(serveStatic(STATIC_PATH, { index: false }));

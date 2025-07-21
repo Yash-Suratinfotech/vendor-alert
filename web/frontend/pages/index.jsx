@@ -1,91 +1,52 @@
 import {
-  Card,
   Page,
   Layout,
+  Card,
   TextContainer,
-  Image,
-  Stack,
-  Link,
+  BlockStack,
   Text,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useTranslation, Trans } from "react-i18next";
-
-import { trophyImage } from "../assets";
-
-import { ProductsCard } from "../components";
+import { useTranslation } from "react-i18next";
+import { useQuery } from "react-query";
 
 export default function HomePage() {
   const { t } = useTranslation();
+
+  const { data, isLoading: isLoadingVendors } = useQuery({
+    queryKey: ["GetVendors"],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor/list");
+      return await response.json();
+    },
+    refetchOnWindowFocus: false,
+  });
+
   return (
     <Page narrowWidth>
-      <TitleBar title={t("HomePage.title")} />
+      <TitleBar title={"Vendor List"} />
       <Layout>
         <Layout.Section>
           <Card sectioned>
-            <Stack
-              wrap={false}
-              spacing="extraTight"
-              distribution="trailing"
-              alignment="center"
-            >
-              <Stack.Item fill>
-                <TextContainer spacing="loose">
-                  <Text as="h2" variant="headingMd">
-                    {t("HomePage.heading")}
-                  </Text>
-                  <p>
-                    <Trans
-                      i18nKey="HomePage.yourAppIsReadyToExplore"
-                      components={{
-                        PolarisLink: (
-                          <Link url="https://polaris.shopify.com/" external />
-                        ),
-                        AdminApiLink: (
-                          <Link
-                            url="https://shopify.dev/api/admin-graphql"
-                            external
-                          />
-                        ),
-                        AppBridgeLink: (
-                          <Link
-                            url="https://shopify.dev/apps/tools/app-bridge"
-                            external
-                          />
-                        ),
-                      }}
-                    />
-                  </p>
-                  <p>{t("HomePage.startPopulatingYourApp")}</p>
-                  <p>
-                    <Trans
-                      i18nKey="HomePage.learnMore"
-                      components={{
-                        ShopifyTutorialLink: (
-                          <Link
-                            url="https://shopify.dev/apps/getting-started/add-functionality"
-                            external
-                          />
-                        ),
-                      }}
-                    />
-                  </p>
-                </TextContainer>
-              </Stack.Item>
-              <Stack.Item>
-                <div style={{ padding: "0 20px" }}>
-                  <Image
-                    source={trophyImage}
-                    alt={t("HomePage.trophyAltText")}
-                    width={120}
-                  />
-                </div>
-              </Stack.Item>
-            </Stack>
+            <TextContainer spacing="loose">
+              <p>{t("ProductsCard.description")}</p>
+              <Text as="h4" variant="headingMd">
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  {isLoadingVendors ? (
+                    "-"
+                  ) : (
+                    <BlockStack gap="200">
+                      {data?.vendors.map((v, i) => (
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          <strong>{ i + 1 }.</strong> { v }
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  )}
+                </Text>
+              </Text>
+            </TextContainer>
           </Card>
-        </Layout.Section>
-        <Layout.Section>
-          <ProductsCard />
         </Layout.Section>
       </Layout>
     </Page>
