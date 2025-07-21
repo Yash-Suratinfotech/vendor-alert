@@ -56,16 +56,6 @@ app.get(
             [session.shop, session.accessToken]
           );
 
-          // Initialize default content protection settings
-          await client.query(
-            `
-            INSERT INTO content_protection_settings (shop_domain) 
-            VALUES ($1) 
-            ON CONFLICT (shop_domain) DO NOTHING
-          `,
-            [session.shop]
-          );
-
           console.log(
             "🆕 New shop initialized with default settings:",
             session.shop
