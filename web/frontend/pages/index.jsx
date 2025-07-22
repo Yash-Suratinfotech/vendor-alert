@@ -5,12 +5,9 @@ import {
   BlockStack,
   Text,
   Button,
-  Badge,
   Banner,
-  Spinner,
   Icon,
   Grid,
-  InlineStack,
   Frame,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";

@@ -16,7 +16,6 @@ import {
   BlockStack,
   InlineStack,
   Frame,
-  Toast,
   Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";

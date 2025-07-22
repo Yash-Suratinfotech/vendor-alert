@@ -10,7 +10,6 @@ import {
   EmptyState,
   Spinner,
   Filters,
-  Select,
   Button,
   Pagination,
   Modal,
