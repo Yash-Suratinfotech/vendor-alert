@@ -237,6 +237,7 @@ class DataSyncService {
 
     try {
       await client.query("BEGIN");
+      console.log('✌️productData --->', productData);
 
       const shopifyProductId = parseInt(
         productData.id.replace("gid://shopify/Product/", "")

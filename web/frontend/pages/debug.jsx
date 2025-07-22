@@ -107,12 +107,6 @@ export default function DebugPage() {
     },
   });
 
-  const showToastMessage = (message, isError = false) => {
-    setToastMessage(message);
-    setToastError(isError);
-    setShowToast(true);
-  };
-
   const getDatabaseStatsTable = () => {
     if (!dbDebugInfo?.stats) return null;
 
@@ -326,15 +320,6 @@ export default function DebugPage() {
                       </BlockStack>
                     </Card>
 
-                    {dbDebugInfo.sampleOrders?.length > 0 && (
-                      <Card background="bg-surface-secondary">
-                        <BlockStack gap="300">
-                          <Text variant="headingMd">Recent Orders Sample</Text>
-                          {getSampleOrdersTable()}
-                        </BlockStack>
-                      </Card>
-                    )}
-
                     {dbDebugInfo.statusBreakdown?.length > 0 && (
                       <Card background="bg-surface-secondary">
                         <BlockStack gap="300">
@@ -385,106 +370,6 @@ export default function DebugPage() {
                     <p>Failed to load database debug information.</p>
                   </Banner>
                 )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          <Layout.Section>
-            {/* Webhook Status */}
-            <Card>
-              <BlockStack gap="400">
-                <Text variant="headingLg">Webhook Configuration</Text>
-
-                {isLoadingWebhooks ? (
-                  <div style={{ textAlign: "center", padding: "1rem" }}>
-                    <Spinner size="large" />
-                  </div>
-                ) : (
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Webhook Health:
-                      </Text>
-                      <InlineStack gap="200">
-                        <Badge tone="success" icon={CheckIcon}>
-                          {webhookHealth?.status || "Unknown"}
-                        </Badge>
-                        <Button
-                          size="slim"
-                          icon={RefreshIcon}
-                          onClick={() => refetchWebhooks()}
-                        >
-                          Check
-                        </Button>
-                      </InlineStack>
-                    </InlineStack>
-
-                    <Divider />
-
-                    <Text variant="headingMd">Configured Webhooks</Text>
-                    {webhookHealth?.webhooks && (
-                      <List type="bullet">
-                        {webhookHealth.webhooks.map((webhook, index) => (
-                          <List.Item key={index}>
-                            <InlineStack align="space-between">
-                              <Text>{webhook}</Text>
-                              <Badge tone="info">Active</Badge>
-                            </InlineStack>
-                          </List.Item>
-                        ))}
-                      </List>
-                    )}
-
-                    <Banner tone="info">
-                      <p>
-                        Webhooks automatically sync data when changes occur in
-                        your Shopify store. If webhooks are not working, use
-                        manual sync instead.
-                      </p>
-                    </Banner>
-                  </BlockStack>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          <Layout.Section variant="oneThird">
-            {/* Quick Actions */}
-            <Card>
-              <BlockStack gap="400">
-                <Text variant="headingMd">Quick Actions</Text>
-
-                <ButtonGroup vertical>
-                  <Button onClick={() => (window.location.href = "/products")}>
-                    View Products
-                  </Button>
-                  <Button onClick={() => (window.location.href = "/vendors")}>
-                    View Vendors
-                  </Button>
-                  <Button onClick={() => (window.location.href = "/orders")}>
-                    View Orders
-                  </Button>
-                </ButtonGroup>
-
-                <Divider />
-
-                <BlockStack gap="200">
-                  <Text variant="bodyMd" fontWeight="medium">
-                    Debug Information
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Last sync check: {webhookHealth?.timestamp || "Unknown"}
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    App status: Running
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Database: Connected
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Shop: {dbDebugInfo?.shopDomain || "Unknown"}
-                  </Text>
-                </BlockStack>
               </BlockStack>
             </Card>
           </Layout.Section>

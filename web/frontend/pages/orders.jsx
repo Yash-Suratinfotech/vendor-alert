@@ -156,7 +156,7 @@ export default function OrdersPage() {
   const getFulfillmentStatusBadge = (status) => {
     const statusMap = {
       fulfilled: { progress: "complete", children: "Fulfilled" },
-      partial: { progress: "incomplete", tone: "warning", children: "Partial" },
+      partially_fulfilled: { progress: "incomplete", tone: "warning", children: "Partially Fulfilled" },
       unfulfilled: {
         progress: "incomplete",
         tone: "attention",
