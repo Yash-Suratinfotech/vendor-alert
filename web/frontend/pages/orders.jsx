@@ -14,6 +14,10 @@ import {
   Modal,
   List,
   BlockStack,
+  InlineStack,
+  Frame,
+  Toast,
+  Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useState, useCallback } from "react";
@@ -27,9 +31,10 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const itemsPerPage = 25;
 
-  // Fetch orders data
+  // Fetch orders data with enhanced debugging
   const {
     data: ordersData,
     isLoading,
@@ -56,14 +61,30 @@ export default function OrdersPage() {
         ...(vendorFilter && { vendor: vendorFilter }),
       });
 
+      console.log("🔍 Fetching orders with params:", params.toString());
+
       const response = await fetch(`/api/orders?${params}`);
       if (!response.ok) {
-        throw new Error("Failed to fetch orders");
+        const errorText = await response.text();
+        console.error("❌ Orders API error:", response.status, errorText);
+        throw new Error(`Failed to fetch orders: ${response.status}`);
       }
-      return await response.json();
+
+      const data = await response.json();
+      console.log("📊 Orders API response:", {
+        ordersCount: data.orders?.length || 0,
+        totalFromPagination: data.pagination?.total || 0,
+        hasOrders: !!data.orders,
+        sampleOrder: data.orders?.[0],
+      });
+
+      return data;
     },
     refetchOnWindowFocus: false,
     keepPreviousData: true,
+    onError: (error) => {
+      console.error("❌ Orders query error:", error);
+    },
   });
 
   // Fetch vendors for filter dropdown
@@ -120,44 +141,51 @@ export default function OrdersPage() {
 
   const getFinancialStatusBadge = (status) => {
     const statusMap = {
-      paid: { status: "success", children: "Paid" },
-      pending: { status: "warning", children: "Pending" },
-      refunded: { status: "critical", children: "Refunded" },
-      partially_refunded: { status: "warning", children: "Partially Refunded" },
-      voided: { status: "critical", children: "Voided" },
+      paid: { tone: "success", children: "Paid" },
+      pending: { tone: "warning", children: "Pending" },
+      refunded: { tone: "critical", children: "Refunded" },
+      partially_refunded: { tone: "warning", children: "Partially Refunded" },
+      voided: { tone: "critical", children: "Voided" },
+      authorized: { tone: "info", children: "Authorized" },
+      partially_paid: { tone: "warning", children: "Partially Paid" },
     };
-    return <Badge {...(statusMap[status] || { children: status })} />;
+    return (
+      <Badge {...(statusMap[status] || { children: status || "Unknown" })} />
+    );
   };
 
   const getFulfillmentStatusBadge = (status) => {
     const statusMap = {
-      fulfilled: { status: "success", children: "Fulfilled" },
-      partial: { status: "warning", children: "Partial" },
-      unfulfilled: { status: "attention", children: "Unfulfilled" },
-      restocked: { status: "info", children: "Restocked" },
+      fulfilled: { tone: "success", children: "Fulfilled" },
+      partial: { tone: "warning", children: "Partial" },
+      unfulfilled: { tone: "attention", children: "Unfulfilled" },
+      restocked: { tone: "info", children: "Restocked" },
+      null: { tone: "attention", children: "Unfulfilled" },
+      undefined: { tone: "attention", children: "Unfulfilled" },
     };
     return (
       <Badge
-        {...(statusMap[status] || { children: status || "Unfulfilled" })}
+        {...(statusMap[status] ||
+          statusMap[status === null ? "null" : "unfulfilled"])}
       />
     );
   };
 
-  // Prepare table data
+  // Enhanced table data preparation
   const tableData =
     ordersData?.orders?.map((order) => [
       <Text variant="bodyMd" fontWeight="semibold">
-        {order.shopifyOrderNumber || order.shopifyOrderId}
+        {order.shopifyOrderNumber || `#${order.shopifyOrderId}`}
       </Text>,
-      `${parseFloat(order.totalPrice || 0).toFixed(2)}`,
+      `$${parseFloat(order.totalPrice || 0).toFixed(2)}`,
       getFinancialStatusBadge(order.financialStatus),
       getFulfillmentStatusBadge(order.fulfillmentStatus),
       order.notified ? (
-        <Badge status="success">Notified</Badge>
+        <Badge tone="success">Notified</Badge>
       ) : (
-        <Badge status="warning">Pending</Badge>
+        <Badge tone="warning">Pending</Badge>
       ),
-      new Date(order.shopifyCreatedAt).toLocaleDateString(),
+      new Date(order.shopifyCreatedAt || order.createdAt).toLocaleDateString(),
       <Button
         size="slim"
         icon={ViewIcon}
@@ -190,6 +218,8 @@ export default function OrdersPage() {
     { label: "All payment statuses", value: "" },
     { label: "Paid", value: "paid" },
     { label: "Pending", value: "pending" },
+    { label: "Authorized", value: "authorized" },
+    { label: "Partially Paid", value: "partially_paid" },
     { label: "Refunded", value: "refunded" },
     { label: "Partially Refunded", value: "partially_refunded" },
     { label: "Voided", value: "voided" },
@@ -271,290 +301,341 @@ export default function OrdersPage() {
     />
   );
 
+  // Debug info for investigating single order issue
+  const debugInfo = ordersData && (
+    <Banner
+      title="Debug Information"
+      tone="info"
+      onDismiss={() => setShowDebugInfo(false)}
+    >
+      <BlockStack gap="200">
+        <Text>
+          <strong>Total Orders in Database:</strong>{" "}
+          {ordersData.pagination?.total || 0}
+        </Text>
+        <Text>
+          <strong>Orders Returned:</strong> {ordersData.orders?.length || 0}
+        </Text>
+        <Text>
+          <strong>Current Page:</strong> {currentPage}
+        </Text>
+        <Text>
+          <strong>Items Per Page:</strong> {itemsPerPage}
+        </Text>
+        <Text>
+          <strong>Applied Filters:</strong>{" "}
+          {appliedFilters.length > 0
+            ? appliedFilters.map((f) => f.label).join(", ")
+            : "None"}
+        </Text>
+      </BlockStack>
+    </Banner>
+  );
+
   if (error) {
     return (
-      <Page narrowWidth>
-        <TitleBar title="Orders" />
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <EmptyState
-                heading="Error loading orders"
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              >
-                <p>There was an error loading the orders data.</p>
-                <Button onClick={() => refetch()}>Try again</Button>
-              </EmptyState>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </Page>
+      <Frame>
+        <Page fullWidth>
+          <TitleBar title="Orders" />
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <EmptyState
+                  heading="Error loading orders"
+                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                >
+                  <p>
+                    There was an error loading the orders data: {error.message}
+                  </p>
+                  <InlineStack gap="300">
+                    <Button onClick={() => refetch()}>Try again</Button>
+                    <Button onClick={() => setShowDebugInfo(true)}>
+                      Show Debug Info
+                    </Button>
+                  </InlineStack>
+                </EmptyState>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        </Page>
+      </Frame>
     );
   }
 
   return (
-    <Page>
-      <TitleBar title="Orders">
-        <button variant="primary" onClick={() => refetch()}>
-          Refresh
-        </button>
-      </TitleBar>
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <div style={{ marginBottom: "1rem" }}>{filters}</div>
+    <Frame>
+      <Page fullWidth>
+        <TitleBar title="Orders">
+          <button variant="primary" onClick={() => refetch()}>
+            Refresh
+          </button>
+        </TitleBar>
+        <Layout>
+          <Layout.Section>
+            {showDebugInfo && debugInfo}
 
-            {isLoading ? (
+            <Card>
+              <div style={{ marginBottom: "1rem" }}>
+                <InlineStack gap="300" align="space-between">
+                  {filters}
+                  <Button
+                    plain
+                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                  >
+                    {showDebugInfo ? "Hide" : "Show"} Debug Info
+                  </Button>
+                </InlineStack>
+              </div>
+
+              {isLoading ? (
+                <div style={{ textAlign: "center", padding: "2rem" }}>
+                  <Spinner size="large" />
+                  <Text variant="bodyMd" tone="subdued">
+                    Loading orders...
+                  </Text>
+                </div>
+              ) : tableData.length === 0 ? (
+                <EmptyState
+                  heading="No orders found"
+                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                >
+                  <p>
+                    {appliedFilters.length > 0
+                      ? "Try adjusting your filter criteria or check if orders exist in your store."
+                      : "No orders have been synced yet. Orders will appear automatically when they are created in your store."}
+                  </p>
+                  <InlineStack gap="300">
+                    {appliedFilters.length > 0 && (
+                      <Button onClick={handleFiltersRemove}>
+                        Clear Filters
+                      </Button>
+                    )}
+                    <Button
+                      primary
+                      onClick={() => (window.location.href = "/debug")}
+                    >
+                      Sync Data
+                    </Button>
+                  </InlineStack>
+                </EmptyState>
+              ) : (
+                <>
+                  <DataTable
+                    columnContentTypes={[
+                      "text",
+                      "numeric",
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                    ]}
+                    headings={tableHeaders}
+                    rows={tableData}
+                    hoverable
+                  />
+
+                  {ordersData?.pagination && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginTop: "1rem",
+                        padding: "1rem 0",
+                      }}
+                    >
+                      <Text variant="bodySm" tone="subdued">
+                        Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                        {Math.min(
+                          currentPage * itemsPerPage,
+                          ordersData.pagination.total
+                        )}{" "}
+                        of {ordersData.pagination.total} orders
+                      </Text>
+
+                      <Pagination
+                        hasPrevious={currentPage > 1}
+                        onPrevious={() => setCurrentPage(currentPage - 1)}
+                        hasNext={currentPage < ordersData.pagination.totalPages}
+                        onNext={() => setCurrentPage(currentPage + 1)}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+          </Layout.Section>
+
+          {/* Order Stats Summary */}
+          {ordersData?.orders && ordersData.orders.length > 0 && (
+            <Layout.Section variant="oneThird">
+              <Card>
+                <BlockStack gap="400">
+                  <Text variant="headingMd">Order Summary</Text>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {
+                        ordersData.orders.filter(
+                          (o) => o.financialStatus === "paid"
+                        ).length
+                      }
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      Paid Orders
+                    </Text>
+                  </div>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {ordersData.orders.filter((o) => o.notified).length}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      Vendors Notified
+                    </Text>
+                  </div>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          )}
+        </Layout>
+
+        {/* Order Details Modal */}
+        <Modal
+          large
+          open={isOrderModalOpen}
+          onClose={() => {
+            setIsOrderModalOpen(false);
+            setSelectedOrder(null);
+          }}
+          title={`Order #${
+            selectedOrder?.shopifyOrderNumber || selectedOrder?.shopifyOrderId
+          }`}
+          secondaryActions={[
+            {
+              content: "Close",
+              onAction: () => {
+                setIsOrderModalOpen(false);
+                setSelectedOrder(null);
+              },
+            },
+          ]}
+        >
+          <Modal.Section>
+            {isLoadingDetails ? (
               <div style={{ textAlign: "center", padding: "2rem" }}>
                 <Spinner size="large" />
               </div>
-            ) : tableData.length === 0 ? (
+            ) : orderDetails ? (
+              <Layout>
+                <Layout.Section oneHalf>
+                  <Card title="Order Information">
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Order ID:
+                        </Text>
+                        <Text>
+                          #
+                          {orderDetails.order.shopifyOrderNumber ||
+                            orderDetails.order.shopifyOrderId}
+                        </Text>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Total:
+                        </Text>
+                        <Text>
+                          $
+                          {parseFloat(
+                            orderDetails.order.totalPrice || 0
+                          ).toFixed(2)}
+                        </Text>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Payment:
+                        </Text>
+                        {getFinancialStatusBadge(
+                          orderDetails.order.financialStatus
+                        )}
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Fulfillment:
+                        </Text>
+                        {getFulfillmentStatusBadge(
+                          orderDetails.order.fulfillmentStatus
+                        )}
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Notification:
+                        </Text>
+                        {orderDetails.order.notified ? (
+                          <Badge tone="success">Vendors Notified</Badge>
+                        ) : (
+                          <Badge tone="warning">Pending</Badge>
+                        )}
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
+                          Date:
+                        </Text>
+                        <Text>
+                          {new Date(
+                            orderDetails.order.shopifyCreatedAt
+                          ).toLocaleString()}
+                        </Text>
+                      </InlineStack>
+                    </BlockStack>
+                  </Card>
+                </Layout.Section>
+
+                <Layout.Section oneHalf>
+                  <Card title="Line Items">
+                    {orderDetails.lineItems &&
+                    orderDetails.lineItems.length > 0 ? (
+                      <List type="bullet">
+                        {orderDetails.lineItems.map((item, index) => (
+                          <List.Item key={index}>
+                            <BlockStack gap="200">
+                              <Text variant="bodyMd" fontWeight="medium">
+                                {item.title}
+                              </Text>
+                              <InlineStack gap="400">
+                                <Text variant="bodySm" tone="subdued">
+                                  Vendor: {item.vendor || "—"}
+                                </Text>
+                                <Text variant="bodySm" tone="subdued">
+                                  Qty: {item.quantity}
+                                </Text>
+                                <Text variant="bodySm" tone="subdued">
+                                  ${parseFloat(item.price || 0).toFixed(2)}
+                                </Text>
+                              </InlineStack>
+                            </BlockStack>
+                          </List.Item>
+                        ))}
+                      </List>
+                    ) : (
+                      <Text tone="subdued">No line items found</Text>
+                    )}
+                  </Card>
+                </Layout.Section>
+              </Layout>
+            ) : (
               <EmptyState
-                heading="No orders found"
+                heading="Failed to load order details"
                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
               >
-                <p>Try adjusting your filter criteria.</p>
+                <p>There was an error loading the order details.</p>
               </EmptyState>
-            ) : (
-              <>
-                <DataTable
-                  columnContentTypes={[
-                    "text",
-                    "numeric",
-                    "text",
-                    "text",
-                    "text",
-                    "text",
-                    "text",
-                  ]}
-                  headings={tableHeaders}
-                  rows={tableData}
-                  hoverable
-                />
-
-                {ordersData?.pagination && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginTop: "1rem",
-                      padding: "1rem 0",
-                    }}
-                  >
-                    <Text variant="bodySm" tone="subdued">
-                      Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                      {Math.min(
-                        currentPage * itemsPerPage,
-                        ordersData.pagination.total
-                      )}{" "}
-                      of {ordersData.pagination.total} orders
-                    </Text>
-
-                    <Pagination
-                      hasPrevious={currentPage > 1}
-                      onPrevious={() => setCurrentPage(currentPage - 1)}
-                      hasNext={currentPage < ordersData.pagination.totalPages}
-                      onNext={() => setCurrentPage(currentPage + 1)}
-                    />
-                  </div>
-                )}
-              </>
             )}
-          </Card>
-        </Layout.Section>
-
-        {/* Order Stats Summary */}
-        {ordersData?.orders && (
-          <Layout.Section secondary>
-            <Card title="Order Summary">
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "1rem",
-                }}
-              >
-                <div>
-                  <Text variant="headingMd">{ordersData.orders.length}</Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Orders Shown
-                  </Text>
-                </div>
-                <div>
-                  <Text variant="headingMd">
-                    $
-                    {ordersData.orders
-                      .reduce(
-                        (sum, order) => sum + parseFloat(order.totalPrice || 0),
-                        0
-                      )
-                      .toFixed(2)}
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Total Value
-                  </Text>
-                </div>
-                <div>
-                  <Text variant="headingMd">
-                    {
-                      ordersData.orders.filter(
-                        (o) => o.financialStatus === "paid"
-                      ).length
-                    }
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Paid Orders
-                  </Text>
-                </div>
-                <div>
-                  <Text variant="headingMd">
-                    {ordersData.orders.filter((o) => o.notified).length}
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Vendors Notified
-                  </Text>
-                </div>
-              </div>
-            </Card>
-          </Layout.Section>
-        )}
-      </Layout>
-
-      {/* Order Details Modal */}
-      <Modal
-        large
-        open={isOrderModalOpen}
-        onClose={() => {
-          setIsOrderModalOpen(false);
-          setSelectedOrder(null);
-        }}
-        title={`Order #${
-          selectedOrder?.shopifyOrderNumber || selectedOrder?.shopifyOrderId
-        }`}
-        secondaryActions={[
-          {
-            content: "Close",
-            onAction: () => {
-              setIsOrderModalOpen(false);
-              setSelectedOrder(null);
-            },
-          },
-        ]}
-      >
-        <Modal.Section>
-          {isLoadingDetails ? (
-            <div style={{ textAlign: "center", padding: "2rem" }}>
-              <Spinner size="large" />
-            </div>
-          ) : orderDetails ? (
-            <Layout>
-              <Layout.Section oneHalf>
-                <Card title="Order Information">
-                  <BlockStack vertical spacing="loose">
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Order ID:
-                      </Text>
-                      <Text>
-                        #
-                        {orderDetails.order.shopifyOrderNumber ||
-                          orderDetails.order.shopifyOrderId}
-                      </Text>
-                    </BlockStack>
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Total:
-                      </Text>
-                      <Text>
-                        $
-                        {parseFloat(orderDetails.order.totalPrice || 0).toFixed(
-                          2
-                        )}
-                      </Text>
-                    </BlockStack>
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Payment:
-                      </Text>
-                      {getFinancialStatusBadge(
-                        orderDetails.order.financialStatus
-                      )}
-                    </BlockStack>
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Fulfillment:
-                      </Text>
-                      {getFulfillmentStatusBadge(
-                        orderDetails.order.fulfillmentStatus
-                      )}
-                    </BlockStack>
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Notification:
-                      </Text>
-                      {orderDetails.order.notified ? (
-                        <Badge status="success">Vendors Notified</Badge>
-                      ) : (
-                        <Badge status="warning">Pending</Badge>
-                      )}
-                    </BlockStack>
-                    <BlockStack distribution="equalSpacing">
-                      <Text variant="bodyMd" fontWeight="medium">
-                        Date:
-                      </Text>
-                      <Text>
-                        {new Date(
-                          orderDetails.order.shopifyCreatedAt
-                        ).toLocaleString()}
-                      </Text>
-                    </BlockStack>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-
-              <Layout.Section oneHalf>
-                <Card title="Line Items">
-                  {orderDetails.lineItems &&
-                  orderDetails.lineItems.length > 0 ? (
-                    <List type="bullet">
-                      {orderDetails.lineItems.map((item, index) => (
-                        <List.Item key={index}>
-                          <BlockStack vertical spacing="tight">
-                            <Text variant="bodyMd" fontWeight="medium">
-                              {item.title}
-                            </Text>
-                            <BlockStack distribution="equalSpacing">
-                              <Text variant="bodySm" tone="subdued">
-                                Vendor: {item.vendor || "—"}
-                              </Text>
-                              <Text variant="bodySm" tone="subdued">
-                                Qty: {item.quantity}
-                              </Text>
-                              <Text variant="bodySm" tone="subdued">
-                                ${parseFloat(item.price || 0).toFixed(2)}
-                              </Text>
-                            </BlockStack>
-                          </BlockStack>
-                        </List.Item>
-                      ))}
-                    </List>
-                  ) : (
-                    <Text tone="subdued">No line items found</Text>
-                  )}
-                </Card>
-              </Layout.Section>
-            </Layout>
-          ) : (
-            <EmptyState
-              heading="Failed to load order details"
-              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-            >
-              <p>There was an error loading the order details.</p>
-            </EmptyState>
-          )}
-        </Modal.Section>
-      </Modal>
-    </Page>
+          </Modal.Section>
+        </Modal>
+      </Page>
+    </Frame>
   );
 }

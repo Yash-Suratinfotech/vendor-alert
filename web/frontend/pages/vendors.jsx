@@ -5,6 +5,7 @@ import {
   DataTable,
   Badge,
   Text,
+  InlineStack,
   BlockStack,
   EmptyState,
   Spinner,
@@ -12,44 +13,51 @@ import {
   Select,
   Button,
   Pagination,
+  Modal,
+  TextField,
+  FormLayout,
+  Toast,
+  Frame,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useState, useCallback } from "react";
-import { useQuery } from "react-query";
+import { useQuery, useMutation, useQueryClient } from "react-query";
 
-export default function ProductsPage() {
+export default function VendorsPage() {
   const [searchValue, setSearchValue] = useState("");
-  const [vendorFilter, setVendorFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    contactPerson: "",
+    mobile: "",
+    email: "",
+    upiId: "",
+  });
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const itemsPerPage = 25;
+  const queryClient = useQueryClient();
 
-  // Fetch products data
+  // Fetch vendors data
   const {
-    data: productsData,
+    data: vendorsData,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: [
-      "products",
-      searchValue,
-      vendorFilter,
-      statusFilter,
-      currentPage,
-    ],
+    queryKey: ["vendors", searchValue, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage,
         limit: itemsPerPage,
         ...(searchValue && { search: searchValue }),
-        ...(vendorFilter && { vendor: vendorFilter }),
-        ...(statusFilter && { status: statusFilter }),
       });
 
-      const response = await fetch(`/api/products?${params}`);
+      const response = await fetch(`/api/vendor/list?${params}`);
       if (!response.ok) {
-        throw new Error("Failed to fetch products");
+        throw new Error("Failed to fetch vendors");
       }
       return await response.json();
     },
@@ -57,14 +65,33 @@ export default function ProductsPage() {
     keepPreviousData: true,
   });
 
-  // Fetch vendors for filter dropdown
-  const { data: vendorsData } = useQuery({
-    queryKey: ["vendors"],
-    queryFn: async () => {
-      const response = await fetch("/api/vendor/list");
+  // Update vendor mutation
+  const updateVendorMutation = useMutation({
+    mutationFn: async (vendorData) => {
+      const response = await fetch(`/api/vendor/${vendorData.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(vendorData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update vendor");
+      }
       return await response.json();
     },
-    refetchOnWindowFocus: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries(["vendors"]);
+      setIsEditModalOpen(false);
+      setSelectedVendor(null);
+      setToastMessage("Vendor updated successfully");
+      setShowToast(true);
+    },
+    onError: (error) => {
+      setToastMessage(`Error: ${error.message}`);
+      setShowToast(true);
+    },
   });
 
   const handleSearchChange = useCallback((value) => {
@@ -72,71 +99,78 @@ export default function ProductsPage() {
     setCurrentPage(1);
   }, []);
 
-  const handleVendorFilterChange = useCallback((value) => {
-    setVendorFilter(value);
-    setCurrentPage(1);
-  }, []);
-
-  const handleStatusFilterChange = useCallback((value) => {
-    setStatusFilter(value);
-    setCurrentPage(1);
-  }, []);
-
   const handleFiltersRemove = useCallback(() => {
     setSearchValue("");
-    setVendorFilter("");
-    setStatusFilter("");
     setCurrentPage(1);
   }, []);
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      active: { status: "success", children: "Active" },
-      draft: { status: "warning", children: "Draft" },
-      archived: { status: "critical", children: "Archived" },
-      deleted: { status: "critical", children: "Deleted" },
+  const handleEditVendor = useCallback((vendor) => {
+    setSelectedVendor(vendor);
+    setEditFormData({
+      name: vendor.name || "",
+      contactPerson: vendor.contactPerson || "",
+      mobile: vendor.mobile || "",
+      email: vendor.email || "",
+      upiId: vendor.upiId || "",
+    });
+    setIsEditModalOpen(true);
+  }, []);
+
+  const handleFormChange = useCallback((field, value) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
+  const handleSaveVendor = useCallback(() => {
+    if (!selectedVendor) return;
+
+    updateVendorMutation.mutate({
+      ...selectedVendor,
+      ...editFormData,
+    });
+  }, [selectedVendor, editFormData, updateVendorMutation]);
+
+  const getVendorStats = (vendor) => {
+    return {
+      products: vendor.productCount || 0,
+      orders: vendor.orderCount || 0,
     };
-    return <Badge {...(statusMap[status] || { children: status })} />;
   };
 
   // Prepare table data
   const tableData =
-    productsData?.products?.map((product) => [
-      <Text variant="bodyMd" fontWeight="semibold">
-        {product.name}
-      </Text>,
-      product.sku || "—",
-      product.vendorName || "—",
-      getStatusBadge(product.status),
-      product.inventoryQuantity?.toString() || "0",
-      product.price ? `$${parseFloat(product.price).toFixed(2)}` : "—",
-      new Date(product.shopifyCreatedAt).toLocaleDateString(),
-    ]) || [];
+    vendorsData?.vendors?.map((vendor) => {
+      const stats = getVendorStats(vendor);
+      return [
+        <Text variant="bodyMd" fontWeight="semibold">
+          {vendor.name}
+        </Text>,
+        vendor.contactPerson || "—",
+        vendor.mobile || "—",
+        vendor.email || "—",
+        vendor.upiId || "—",
+        <InlineStack gap="200">
+          <Badge tone="info">{stats.products} products</Badge>
+          <Badge tone="success">{stats.orders} orders</Badge>
+        </InlineStack>,
+        new Date(vendor.createdAt).toLocaleDateString(),
+        <Button size="slim" onClick={() => handleEditVendor(vendor)}>
+          Edit
+        </Button>,
+      ];
+    }) || [];
 
   const tableHeaders = [
-    "Product Name",
-    "SKU",
-    "Vendor",
-    "Status",
-    "Inventory",
-    "Price",
+    "Vendor Name",
+    "Contact Person",
+    "Mobile",
+    "Email",
+    "UPI ID",
+    "Stats",
     "Created",
-  ];
-
-  // Filter options
-  const vendorOptions = [
-    { label: "All vendors", value: "" },
-    ...(vendorsData?.vendors?.map((vendor) => ({
-      label: vendor.name,
-      value: vendor.shopifyVendorName || vendor.name,
-    })) || []),
-  ];
-
-  const statusOptions = [
-    { label: "All statuses", value: "" },
-    { label: "Active", value: "active" },
-    { label: "Draft", value: "draft" },
-    { label: "Archived", value: "archived" },
+    "Actions",
   ];
 
   const appliedFilters = [];
@@ -146,65 +180,31 @@ export default function ProductsPage() {
       label: `Search: ${searchValue}`,
       onRemove: () => setSearchValue(""),
     });
-  if (vendorFilter)
-    appliedFilters.push({
-      key: "vendor",
-      label: `Vendor: ${vendorFilter}`,
-      onRemove: () => setVendorFilter(""),
-    });
-  if (statusFilter)
-    appliedFilters.push({
-      key: "status",
-      label: `Status: ${statusFilter}`,
-      onRemove: () => setStatusFilter(""),
-    });
 
   const filters = (
     <Filters
       queryValue={searchValue}
-      filters={[
-        {
-          key: "vendor",
-          label: "Vendor",
-          filter: (
-            <Select
-              label="Vendor"
-              labelHidden
-              options={vendorOptions}
-              value={vendorFilter}
-              onChange={handleVendorFilterChange}
-            />
-          ),
-        },
-        {
-          key: "status",
-          label: "Status",
-          filter: (
-            <Select
-              label="Status"
-              labelHidden
-              options={statusOptions}
-              value={statusFilter}
-              onChange={handleStatusFilterChange}
-            />
-          ),
-        },
-      ]}
+      filters={[]}
       appliedFilters={appliedFilters}
       onQueryChange={handleSearchChange}
       onQueryClear={() => setSearchValue("")}
       onClearAll={handleFiltersRemove}
+      queryPlaceholder="Search vendors..."
     />
   );
 
+  const toastMarkup = showToast ? (
+    <Toast content={toastMessage} onDismiss={() => setShowToast(false)} />
+  ) : null;
+
   if (error) {
     return (
-      <Page narrowWidth>
-        <TitleBar title="Vendors" />
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack>
+      <Frame>
+        <Page fullWidth>
+          <TitleBar title="Vendors" />
+          <Layout>
+            <Layout.Section>
+              <Card>
                 <EmptyState
                   heading="Error loading vendors"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
@@ -212,25 +212,26 @@ export default function ProductsPage() {
                   <p>There was an error loading the vendors data.</p>
                   <Button onClick={() => refetch()}>Try again</Button>
                 </EmptyState>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </Page>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        </Page>
+        {toastMarkup}
+      </Frame>
     );
   }
 
   return (
-    <Page>
-      <TitleBar title="Vendors">
-        <button variant="primary" onClick={() => refetch()}>
-          Refresh
-        </button>
-      </TitleBar>
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack>
+    <Frame>
+      <Page fullWidth>
+        <TitleBar title="Vendors">
+          <button variant="primary" onClick={() => refetch()}>
+            Refresh
+          </button>
+        </TitleBar>
+        <Layout>
+          <Layout.Section>
+            <Card>
               <div style={{ marginBottom: "1rem" }}>{filters}</div>
 
               {isLoading ? (
@@ -239,10 +240,22 @@ export default function ProductsPage() {
                 </div>
               ) : tableData.length === 0 ? (
                 <EmptyState
-                  heading="No products found"
+                  heading="No vendors found"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
-                  <p>Try adjusting your search or filter criteria.</p>
+                  <p>
+                    {searchValue
+                      ? "Try adjusting your search criteria."
+                      : "Vendors will appear automatically when products are synced from your store."}
+                  </p>
+                  {!searchValue && (
+                    <Button
+                      primary
+                      onClick={() => (window.location.href = "/debug")}
+                    >
+                      Sync Data
+                    </Button>
+                  )}
                 </EmptyState>
               ) : (
                 <>
@@ -252,8 +265,9 @@ export default function ProductsPage() {
                       "text",
                       "text",
                       "text",
-                      "numeric",
-                      "numeric",
+                      "text",
+                      "text",
+                      "text",
                       "text",
                     ]}
                     headings={tableHeaders}
@@ -261,7 +275,7 @@ export default function ProductsPage() {
                     hoverable
                   />
 
-                  {productsData?.pagination && (
+                  {vendorsData?.pagination && (
                     <div
                       style={{
                         display: "flex",
@@ -275,16 +289,16 @@ export default function ProductsPage() {
                         Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
                         {Math.min(
                           currentPage * itemsPerPage,
-                          productsData.pagination.total
+                          vendorsData.pagination.total
                         )}{" "}
-                        of {productsData.pagination.total} products
+                        of {vendorsData.pagination.total} vendors
                       </Text>
 
                       <Pagination
                         hasPrevious={currentPage > 1}
                         onPrevious={() => setCurrentPage(currentPage - 1)}
                         hasNext={
-                          currentPage < productsData.pagination.totalPages
+                          currentPage < vendorsData.pagination.totalPages
                         }
                         onNext={() => setCurrentPage(currentPage + 1)}
                       />
@@ -292,10 +306,133 @@ export default function ProductsPage() {
                   )}
                 </>
               )}
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+            </Card>
+          </Layout.Section>
+
+          {/* Vendor Stats Summary */}
+          {vendorsData?.vendors && (
+            <Layout.Section variant="oneThird">
+              <Card>
+                <BlockStack gap="400">
+                  <Text variant="headingMd">Vendor Summary</Text>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {vendorsData.vendors.length}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      Total Vendors
+                    </Text>
+                  </div>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {vendorsData.vendors.reduce(
+                        (sum, vendor) => sum + (vendor.productCount || 0),
+                        0
+                      )}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      Total Products
+                    </Text>
+                  </div>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {vendorsData.vendors.reduce(
+                        (sum, vendor) => sum + (vendor.orderCount || 0),
+                        0
+                      )}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      Total Orders
+                    </Text>
+                  </div>
+
+                  <div>
+                    <Text variant="headingLg" as="h3">
+                      {
+                        vendorsData.vendors.filter(
+                          (v) => v.mobile || v.email || v.upiId
+                        ).length
+                      }
+                    </Text>
+                    <Text variant="bodySm" tone="subdued">
+                      With Contact Info
+                    </Text>
+                  </div>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          )}
+        </Layout>
+
+        {/* Edit Vendor Modal */}
+        <Modal
+          open={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedVendor(null);
+          }}
+          title={`Edit Vendor: ${selectedVendor?.name}`}
+          primaryAction={{
+            content: "Save Changes",
+            onAction: handleSaveVendor,
+            loading: updateVendorMutation.isLoading,
+          }}
+          secondaryActions={[
+            {
+              content: "Cancel",
+              onAction: () => {
+                setIsEditModalOpen(false);
+                setSelectedVendor(null);
+              },
+            },
+          ]}
+        >
+          <Modal.Section>
+            <FormLayout>
+              <TextField
+                label="Vendor Name"
+                value={editFormData.name}
+                onChange={(value) => handleFormChange("name", value)}
+                autoComplete="organization"
+              />
+
+              <TextField
+                label="Contact Person"
+                value={editFormData.contactPerson}
+                onChange={(value) => handleFormChange("contactPerson", value)}
+                autoComplete="name"
+              />
+
+              <TextField
+                label="Mobile Number"
+                value={editFormData.mobile}
+                onChange={(value) => handleFormChange("mobile", value)}
+                type="tel"
+                autoComplete="tel"
+              />
+
+              <TextField
+                label="Email Address"
+                value={editFormData.email}
+                onChange={(value) => handleFormChange("email", value)}
+                type="email"
+                autoComplete="email"
+              />
+
+              <TextField
+                label="UPI ID"
+                value={editFormData.upiId}
+                onChange={(value) => handleFormChange("upiId", value)}
+                helpText="For payment notifications"
+              />
+            </FormLayout>
+          </Modal.Section>
+        </Modal>
+      </Page>
+      {toastMarkup}
+    </Frame>
   );
 }

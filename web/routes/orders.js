@@ -1,115 +1,167 @@
-// web/routes/orders.js
+// web/routes/orders.js - Enhanced with debugging
 import express from "express";
 import db from "../db.js";
 
 const router = express.Router();
 
-// GET /api/orders - Get orders with filtering and pagination
+// Get orders with pagination and filters - ENHANCED WITH DEBUGGING
 router.get("/", async (req, res) => {
   try {
     const session = res.locals.shopify.session;
     const shopDomain = session.shop;
 
-    const {
-      page = 1,
-      limit = 25,
-      financial_status,
-      fulfillment_status,
-      vendor,
-    } = req.query;
+    // Parse query parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+    const offset = (page - 1) * limit;
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // Filters
+    const financialStatus = req.query.financial_status;
+    const fulfillmentStatus = req.query.fulfillment_status;
+    const vendor = req.query.vendor;
+
+    console.log("🔍 Orders API Debug:", {
+      shopDomain,
+      page,
+      limit,
+      offset,
+      filters: {
+        financialStatus,
+        fulfillmentStatus,
+        vendor,
+      },
+    });
 
     // Build WHERE conditions
-    const conditions = ["o.shop_domain = $1"];
-    const params = [shopDomain];
-    let paramIndex = 2;
+    let whereConditions = ["shop_domain = $1"];
+    let queryParams = [shopDomain];
+    let paramCount = 1;
 
-    if (financial_status) {
-      conditions.push(`o.financial_status = $${paramIndex}`);
-      params.push(financial_status);
-      paramIndex++;
+    if (financialStatus) {
+      paramCount++;
+      whereConditions.push(`financial_status = $${paramCount}`);
+      queryParams.push(financialStatus);
     }
 
-    if (fulfillment_status) {
-      conditions.push(`o.fulfillment_status = $${paramIndex}`);
-      params.push(fulfillment_status);
-      paramIndex++;
+    if (fulfillmentStatus) {
+      paramCount++;
+      whereConditions.push(`fulfillment_status = $${paramCount}`);
+      queryParams.push(fulfillmentStatus);
     }
 
-    let joinClause = "";
     if (vendor) {
-      joinClause = "JOIN order_line_items oli ON oli.order_id = o.id";
-      conditions.push(`oli.vendor = $${paramIndex}`);
-      params.push(vendor);
-      paramIndex++;
+      paramCount++;
+      whereConditions.push(`
+        id IN (
+          SELECT DISTINCT order_id 
+          FROM order_line_items 
+          WHERE vendor = $${paramCount}
+        )
+      `);
+      queryParams.push(vendor);
     }
 
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const whereClause = whereConditions.join(" AND ");
 
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(DISTINCT o.id) as total 
-      FROM orders o
-      ${joinClause}
-      ${whereClause}
+    // First, let's get total count for debugging
+    const totalCountQuery = `
+      SELECT COUNT(*) as total
+      FROM orders 
+      WHERE ${whereClause}
     `;
-    const countResult = await db.query(countQuery, params);
-    const total = parseInt(countResult.rows[0].total);
 
-    // Get orders
+    console.log("📊 Total count query:", totalCountQuery);
+    console.log("📊 Query params:", queryParams);
+
+    const totalResult = await db.query(totalCountQuery, queryParams);
+    const total = parseInt(totalResult.rows[0].total);
+
+    console.log("📊 Total orders found:", total);
+
+    // Get orders with pagination
     const ordersQuery = `
-      SELECT DISTINCT o.*
-      FROM orders o
-      ${joinClause}
-      ${whereClause}
-      ORDER BY o.shopify_created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      SELECT 
+        id,
+        shopify_order_id,
+        shopify_order_number,
+        total_price,
+        financial_status,
+        fulfillment_status,
+        order_status,
+        notified,
+        created_at,
+        updated_at,
+        shopify_created_at,
+        shopify_updated_at
+      FROM orders 
+      WHERE ${whereClause}
+      ORDER BY shopify_created_at DESC, created_at DESC
+      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
     `;
 
-    const ordersResult = await db.query(ordersQuery, [
-      ...params,
-      parseInt(limit),
-      offset,
-    ]);
+    queryParams.push(limit, offset);
 
-    const orders = ordersResult.rows.map((order) => ({
-      id: order.id,
-      shopifyOrderId: order.shopify_order_id,
-      shopifyOrderNumber: order.shopify_order_number,
-      totalPrice: parseFloat(order.total_price || 0),
-      financialStatus: order.financial_status,
-      fulfillmentStatus: order.fulfillment_status,
-      orderStatus: order.order_status,
-      notified: order.notified,
-      shopifyCreatedAt: order.shopify_created_at,
-      shopifyUpdatedAt: order.shopify_updated_at,
-      createdAt: order.created_at,
-      updatedAt: order.updated_at,
-    }));
+    console.log("📋 Orders query:", ordersQuery);
+    console.log("📋 Final query params:", queryParams);
 
-    const totalPages = Math.ceil(total / parseInt(limit));
+    const ordersResult = await db.query(ordersQuery, queryParams);
+    const orders = ordersResult.rows;
 
+    console.log("📋 Orders returned:", {
+      count: orders.length,
+      sampleOrder: orders[0],
+    });
+
+    // Calculate pagination
+    const totalPages = Math.ceil(total / limit);
+
+    // Additional debugging: Check raw order count in database
+    const rawCountResult = await db.query(
+      "SELECT COUNT(*) as raw_total FROM orders WHERE shop_domain = $1",
+      [shopDomain]
+    );
+    const rawTotal = parseInt(rawCountResult.rows[0].raw_total);
+
+    console.log("📊 Debug Summary:", {
+      shopDomain,
+      rawTotalInDB: rawTotal,
+      filteredTotal: total,
+      ordersReturned: orders.length,
+      page,
+      totalPages,
+      hasFilters: !!(financialStatus || fulfillmentStatus || vendor),
+    });
+
+    // Return response with debug info
     res.json({
       success: true,
       orders,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
         total,
+        page,
         totalPages,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+      debug: {
+        rawTotalInDB: rawTotal,
+        filteredTotal: total,
+        queryParams: queryParams.slice(0, -2), // Don't expose limit/offset
+        hasFilters: !!(financialStatus || fulfillmentStatus || vendor),
+        shopDomain,
       },
     });
   } catch (error) {
-    console.error("❌ Failed to fetch orders:", error);
-    res.status(500).json({ error: "Failed to fetch orders" });
+    console.error("❌ Error fetching orders:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch orders",
+      details: error.message,
+    });
   }
 });
 
-// GET /api/orders/:id - Get specific order details
+// Get single order details
 router.get("/:id", async (req, res) => {
   try {
     const session = res.locals.shopify.session;
@@ -126,7 +178,10 @@ router.get("/:id", async (req, res) => {
     );
 
     if (orderResult.rows.length === 0) {
-      return res.status(404).json({ error: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Order not found",
+      });
     }
 
     const order = orderResult.rows[0];
@@ -135,86 +190,111 @@ router.get("/:id", async (req, res) => {
     const lineItemsResult = await db.query(
       `
       SELECT 
-        oli.*,
-        p.name as product_name,
-        p.handle as product_handle
-      FROM order_line_items oli
-      LEFT JOIN products p ON p.id = oli.product_id
-      WHERE oli.order_id = $1
-      ORDER BY oli.id ASC
+        id,
+        shopify_line_item_id,
+        title,
+        vendor,
+        quantity,
+        price,
+        total_discount
+      FROM order_line_items 
+      WHERE order_id = $1
+      ORDER BY id
     `,
       [orderId]
     );
 
-    const orderDetails = {
-      id: order.id,
-      shopifyOrderId: order.shopify_order_id,
-      shopifyOrderNumber: order.shopify_order_number,
-      totalPrice: parseFloat(order.total_price || 0),
-      financialStatus: order.financial_status,
-      fulfillmentStatus: order.fulfillment_status,
-      orderStatus: order.order_status,
-      notified: order.notified,
-      shopifyCreatedAt: order.shopify_created_at,
-      shopifyUpdatedAt: order.shopify_updated_at,
-    };
-
-    const lineItems = lineItemsResult.rows.map((item) => ({
-      id: item.id,
-      shopifyLineItemId: item.shopify_line_item_id,
-      productId: item.product_id,
-      shopifyProductId: item.shopify_product_id,
-      shopifyVariantId: item.shopify_variant_id,
-      title: item.title,
-      productName: item.product_name,
-      productHandle: item.product_handle,
-      vendor: item.vendor,
-      quantity: item.quantity,
-      price: parseFloat(item.price || 0),
-      totalDiscount: parseFloat(item.total_discount || 0),
-      createdAt: item.created_at,
-    }));
+    const lineItems = lineItemsResult.rows;
 
     res.json({
       success: true,
-      order: orderDetails,
+      order,
       lineItems,
     });
   } catch (error) {
-    console.error("❌ Failed to fetch order details:", error);
-    res.status(500).json({ error: "Failed to fetch order details" });
+    console.error("❌ Error fetching order details:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch order details",
+      details: error.message,
+    });
   }
 });
 
-// PUT /api/orders/:id/notify - Mark order as notified
-router.put("/:id/notify", async (req, res) => {
+// Debug endpoint to check database state
+router.get("/debug/database", async (req, res) => {
   try {
     const session = res.locals.shopify.session;
     const shopDomain = session.shop;
-    const orderId = req.params.id;
 
-    const result = await db.query(
+    // Get comprehensive database stats
+    const stats = await db.query(
       `
-      UPDATE orders 
-      SET notified = TRUE, updated_at = NOW()
-      WHERE id = $1 AND shop_domain = $2
-      RETURNING *
+      SELECT 
+        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as total_orders,
+        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1 AND financial_status = 'paid') as paid_orders,
+        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1 AND fulfillment_status = 'fulfilled') as fulfilled_orders,
+        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1 AND notified = true) as notified_orders,
+        (SELECT COUNT(*) FROM order_line_items oli 
+         JOIN orders o ON oli.order_id = o.id 
+         WHERE o.shop_domain = $1) as total_line_items,
+        (SELECT COUNT(DISTINCT vendor) FROM order_line_items oli 
+         JOIN orders o ON oli.order_id = o.id 
+         WHERE o.shop_domain = $1 AND vendor IS NOT NULL) as unique_vendors_in_orders,
+        (SELECT MIN(shopify_created_at) FROM orders WHERE shop_domain = $1) as oldest_order,
+        (SELECT MAX(shopify_created_at) FROM orders WHERE shop_domain = $1) as newest_order
     `,
-      [orderId, shopDomain]
+      [shopDomain]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Order not found" });
-    }
+    // Get sample orders
+    const sampleOrders = await db.query(
+      `
+      SELECT 
+        shopify_order_id,
+        shopify_order_number,
+        financial_status,
+        fulfillment_status,
+        total_price,
+        shopify_created_at
+      FROM orders 
+      WHERE shop_domain = $1 
+      ORDER BY shopify_created_at DESC 
+      LIMIT 5
+    `,
+      [shopDomain]
+    );
+
+    // Get orders by status
+    const statusBreakdown = await db.query(
+      `
+      SELECT 
+        financial_status,
+        fulfillment_status,
+        COUNT(*) as count
+      FROM orders 
+      WHERE shop_domain = $1 
+      GROUP BY financial_status, fulfillment_status
+      ORDER BY count DESC
+    `,
+      [shopDomain]
+    );
 
     res.json({
       success: true,
-      message: "Order marked as notified",
-      order: result.rows[0],
+      shopDomain,
+      stats: stats.rows[0],
+      sampleOrders: sampleOrders.rows,
+      statusBreakdown: statusBreakdown.rows,
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("❌ Failed to update order notification status:", error);
-    res.status(500).json({ error: "Failed to update notification status" });
+    console.error("❌ Error in debug endpoint:", error);
+    res.status(500).json({
+      success: false,
+      error: "Debug query failed",
+      details: error.message,
+    });
   }
 });
 

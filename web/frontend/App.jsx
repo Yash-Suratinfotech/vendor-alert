@@ -26,6 +26,9 @@ export default function App() {
             <a href="/orders" rel="orders">
               Orders
             </a>
+            <a href="/debug" rel="Debug & Sync">
+              Debug & Sync
+            </a>
           </NavMenu>
           <Routes pages={pages} />
         </QueryProvider>
