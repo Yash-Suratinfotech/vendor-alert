@@ -5,6 +5,7 @@ import {
   DataTable,
   Badge,
   Text,
+  BlockStack,
   EmptyState,
   Spinner,
   Filters,
@@ -199,16 +200,16 @@ export default function ProductsPage() {
   if (error) {
     return (
       <Page narrowWidth>
-        <TitleBar title="Products" />
+        <TitleBar title="Vendors" />
         <Layout>
           <Layout.Section>
             <Card>
               <BlockStack>
                 <EmptyState
-                  heading="Error loading products"
+                  heading="Error loading vendors"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
-                  <p>There was an error loading the products data.</p>
+                  <p>There was an error loading the vendors data.</p>
                   <Button onClick={() => refetch()}>Try again</Button>
                 </EmptyState>
               </BlockStack>
@@ -221,13 +222,11 @@ export default function ProductsPage() {
 
   return (
     <Page>
-      <TitleBar
-        title="Products"
-        primaryAction={{
-          content: "Refresh",
-          onAction: () => refetch(),
-        }}
-      />
+      <TitleBar title="Vendors">
+        <button variant="primary" onClick={() => refetch()}>
+          Refresh
+        </button>
+      </TitleBar>
       <Layout>
         <Layout.Section>
           <Card>

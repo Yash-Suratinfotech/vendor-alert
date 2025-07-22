@@ -19,7 +19,7 @@ const client = new Client({
 await client.connect();
 
 try {
-  // Create all tables for VendorAlert system
+  // Create all tables for VendorAlert system (NO CUSTOMER DATA)
   await client.query(`
     -- 🏪 Shops Table
     CREATE TABLE IF NOT EXISTS shops (
@@ -67,7 +67,7 @@ try {
       shopify_updated_at TIMESTAMP
     );
 
-    -- 📬 Orders Table (Only business data)
+    -- 📬 Orders Table (NO CUSTOMER DATA - Only business data)
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       shopify_order_id BIGINT UNIQUE NOT NULL,
@@ -84,11 +84,11 @@ try {
       shopify_updated_at TIMESTAMP
     );
 
-    -- 📋 Order Line Items Table (Only product and vendor data)
+    -- 📋 Order Line Items Table (Only product and vendor data) - FIXED UNIQUE CONSTRAINT
     CREATE TABLE IF NOT EXISTS order_line_items (
       id SERIAL PRIMARY KEY,
       order_id INT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      shopify_line_item_id BIGINT,
+      shopify_line_item_id BIGINT UNIQUE, -- ADDED UNIQUE CONSTRAINT
       product_id INT REFERENCES products(id) ON DELETE SET NULL,
       shopify_product_id BIGINT,
       shopify_variant_id BIGINT,
@@ -126,6 +126,18 @@ try {
     CREATE INDEX IF NOT EXISTS idx_vendors_shopify_name ON vendors(shopify_vendor_name);
     
     CREATE INDEX IF NOT EXISTS idx_sync_logs_shop_type ON sync_logs(shop_domain, entity_type);
+    
+    -- Add unique constraint to existing table if it doesn't exist
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'order_line_items_shopify_line_item_id_key' 
+            AND table_name = 'order_line_items'
+        ) THEN
+            ALTER TABLE order_line_items ADD CONSTRAINT order_line_items_shopify_line_item_id_key UNIQUE (shopify_line_item_id);
+        END IF;
+    END $$;
   `);
 
   console.log(

@@ -134,7 +134,7 @@ class DataSyncService {
   }
 
   /**
-   * Sync all orders from Shopify
+   * Sync all orders from Shopify (minimal data only - no customer info)
    */
   async syncAllOrders(session) {
     const shopDomain = session.shop;
@@ -144,7 +144,7 @@ class DataSyncService {
     let cursor = null;
     let totalSynced = 0;
 
-    console.log(`📋 Starting order sync for ${shopDomain}`);
+    console.log(`📋 Starting order sync for ${shopDomain} (minimal data only)`);
 
     while (hasNextPage) {
       try {
@@ -312,7 +312,7 @@ class DataSyncService {
   }
 
   /**
-   * Sync individual order
+   * Sync individual order (minimal data - NO customer info)
    */
   async syncOrderMinimal(orderData, shopDomain) {
     const client = await db.getClient();
@@ -327,7 +327,7 @@ class DataSyncService {
         orderData.totalPriceSet?.shopMoney?.amount || 0
       );
 
-      // Upsert order with business data
+      // Upsert order with NO customer data - only business data
       const orderResult = await db.query(
         `
         INSERT INTO orders (
@@ -374,66 +374,105 @@ class DataSyncService {
   }
 
   /**
-   * Sync order line item (the important data for vendor notifications)
+   * Sync order line item (FIXED - Handle NULL shopify_line_item_id)
    */
   async syncOrderLineItem(lineItemData, orderId, client) {
-    const shopifyLineItemId = parseInt(
-      lineItemData.id.replace("gid://shopify/LineItem/", "")
-    );
-    const shopifyProductId = lineItemData.product?.id
-      ? parseInt(lineItemData.product.id.replace("gid://shopify/Product/", ""))
-      : null;
-    const shopifyVariantId = lineItemData.variant?.id
-      ? parseInt(
-          lineItemData.variant.id.replace("gid://shopify/ProductVariant/", "")
-        )
-      : null;
+    try {
+      const shopifyLineItemId = lineItemData.id
+        ? parseInt(lineItemData.id.replace("gid://shopify/LineItem/", ""))
+        : null;
 
-    const price = parseFloat(
-      lineItemData.originalUnitPriceSet?.shopMoney?.amount || 0
-    );
-    const totalDiscount = parseFloat(
-      lineItemData.totalDiscountSet?.shopMoney?.amount || 0
-    );
+      const shopifyProductId = lineItemData.product?.id
+        ? parseInt(
+            lineItemData.product.id.replace("gid://shopify/Product/", "")
+          )
+        : null;
 
-    // Get product_id from our database
-    let productId = null;
-    if (shopifyProductId) {
-      const productResult = await client.query(
-        "SELECT id FROM products WHERE shopify_product_id = $1",
-        [shopifyProductId]
+      const shopifyVariantId = lineItemData.variant?.id
+        ? parseInt(
+            lineItemData.variant.id.replace("gid://shopify/ProductVariant/", "")
+          )
+        : null;
+
+      const price = parseFloat(
+        lineItemData.originalUnitPriceSet?.shopMoney?.amount || 0
       );
-      productId = productResult.rows[0]?.id || null;
-    }
+      const totalDiscount = parseFloat(
+        lineItemData.totalDiscountSet?.shopMoney?.amount || 0
+      );
 
-    await client.query(
-      `
-      INSERT INTO order_line_items (
-        order_id, shopify_line_item_id, product_id, shopify_product_id,
-        shopify_variant_id, title, vendor, quantity, price, total_discount
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      ON CONFLICT (shopify_line_item_id) 
-      DO UPDATE SET 
-        product_id = EXCLUDED.product_id,
-        title = EXCLUDED.title,
-        vendor = EXCLUDED.vendor,
-        quantity = EXCLUDED.quantity,
-        price = EXCLUDED.price,
-        total_discount = EXCLUDED.total_discount
-    `,
-      [
-        orderId,
-        shopifyLineItemId,
-        productId,
-        shopifyProductId,
-        shopifyVariantId,
-        lineItemData.title,
-        lineItemData.vendor,
-        lineItemData.quantity,
-        price,
-        totalDiscount,
-      ]
-    );
+      // Get product_id from our database
+      let productId = null;
+      if (shopifyProductId) {
+        const productResult = await client.query(
+          "SELECT id FROM products WHERE shopify_product_id = $1",
+          [shopifyProductId]
+        );
+        productId = productResult.rows[0]?.id || null;
+      }
+
+      // FIXED: Handle cases where shopify_line_item_id might be null or duplicate
+      if (shopifyLineItemId) {
+        // Use ON CONFLICT only if we have a valid line item ID
+        await client.query(
+          `
+          INSERT INTO order_line_items (
+            order_id, shopify_line_item_id, product_id, shopify_product_id,
+            shopify_variant_id, title, vendor, quantity, price, total_discount
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (shopify_line_item_id) 
+          DO UPDATE SET 
+            product_id = EXCLUDED.product_id,
+            title = EXCLUDED.title,
+            vendor = EXCLUDED.vendor,
+            quantity = EXCLUDED.quantity,
+            price = EXCLUDED.price,
+            total_discount = EXCLUDED.total_discount
+        `,
+          [
+            orderId,
+            shopifyLineItemId,
+            productId,
+            shopifyProductId,
+            shopifyVariantId,
+            lineItemData.title,
+            lineItemData.vendor,
+            lineItemData.quantity,
+            price,
+            totalDiscount,
+          ]
+        );
+      } else {
+        // If no line item ID, just insert (don't use ON CONFLICT)
+        await client.query(
+          `
+          INSERT INTO order_line_items (
+            order_id, shopify_line_item_id, product_id, shopify_product_id,
+            shopify_variant_id, title, vendor, quantity, price, total_discount
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `,
+          [
+            orderId,
+            null, // shopify_line_item_id is null
+            productId,
+            shopifyProductId,
+            shopifyVariantId,
+            lineItemData.title,
+            lineItemData.vendor,
+            lineItemData.quantity,
+            price,
+            totalDiscount,
+          ]
+        );
+      }
+    } catch (error) {
+      console.error("Error syncing line item:", {
+        lineItemId: lineItemData.id,
+        orderId: orderId,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -530,10 +569,10 @@ class DataSyncService {
   }
 
   /**
-   * Sync order from webhook data
+   * Sync order from webhook data (minimal data only)
    */
   async syncOrderFromWebhook(orderData, shopDomain) {
-    // Transform webhook data to match our sync format
+    // Transform webhook data to match our sync format (NO customer data)
     const transformedData = {
       id: `gid://shopify/Order/${orderData.id}`,
       name: orderData.name,
@@ -547,7 +586,7 @@ class DataSyncService {
       lineItems: {
         edges: orderData.line_items.map((item) => ({
           node: {
-            id: `gid://shopify/LineItem/${item.id}`,
+            id: item.id ? `gid://shopify/LineItem/${item.id}` : null,
             title: item.title,
             vendor: item.vendor,
             quantity: item.quantity,

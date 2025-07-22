@@ -147,7 +147,7 @@ export default function OrdersPage() {
   const tableData =
     ordersData?.orders?.map((order) => [
       <Text variant="bodyMd" fontWeight="semibold">
-        #{order.shopifyOrderNumber || order.shopifyOrderId}
+        {order.shopifyOrderNumber || order.shopifyOrderId}
       </Text>,
       `${parseFloat(order.totalPrice || 0).toFixed(2)}`,
       getFinancialStatusBadge(order.financialStatus),
@@ -294,13 +294,11 @@ export default function OrdersPage() {
 
   return (
     <Page>
-      <TitleBar
-        title="Orders"
-        primaryAction={{
-          content: "Refresh",
-          onAction: () => refetch(),
-        }}
-      />
+      <TitleBar title="Orders">
+        <button variant="primary" onClick={() => refetch()}>
+          Refresh
+        </button>
+      </TitleBar>
       <Layout>
         <Layout.Section>
           <Card>

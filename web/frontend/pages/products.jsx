@@ -219,13 +219,11 @@ export default function ProductsPage() {
 
   return (
     <Page>
-      <TitleBar
-        title="Products"
-        primaryAction={{
-          content: "Refresh",
-          onAction: () => refetch(),
-        }}
-      />
+      <TitleBar title="Products">
+        <button variant="primary" onClick={() => refetch()}>
+          Refresh
+        </button>
+      </TitleBar>
       <Layout>
         <Layout.Section>
           <Card>
