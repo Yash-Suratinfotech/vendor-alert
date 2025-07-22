@@ -141,8 +141,8 @@ export default function OrdersPage() {
 
   const getFinancialStatusBadge = (status) => {
     const statusMap = {
-      paid: { tone: "success", children: "Paid" },
-      pending: { tone: "warning", children: "Pending" },
+      paid: { progress: "complete", children: "Paid" },
+      pending: { progress: "incomplete", tone: "warning", children: "Pending" },
       refunded: { tone: "critical", children: "Refunded" },
       partially_refunded: { tone: "warning", children: "Partially Refunded" },
       voided: { tone: "critical", children: "Voided" },
@@ -156,9 +156,13 @@ export default function OrdersPage() {
 
   const getFulfillmentStatusBadge = (status) => {
     const statusMap = {
-      fulfilled: { tone: "success", children: "Fulfilled" },
-      partial: { tone: "warning", children: "Partial" },
-      unfulfilled: { tone: "attention", children: "Unfulfilled" },
+      fulfilled: { progress: "complete", children: "Fulfilled" },
+      partial: { progress: "incomplete", tone: "warning", children: "Partial" },
+      unfulfilled: {
+        progress: "incomplete",
+        tone: "attention",
+        children: "Unfulfilled",
+      },
       restocked: { tone: "info", children: "Restocked" },
       null: { tone: "attention", children: "Unfulfilled" },
       undefined: { tone: "attention", children: "Unfulfilled" },
@@ -175,17 +179,19 @@ export default function OrdersPage() {
   const tableData =
     ordersData?.orders?.map((order) => [
       <Text variant="bodyMd" fontWeight="semibold">
-        {order.shopifyOrderNumber || `#${order.shopifyOrderId}`}
+        {order.shopify_order_number || `#${order.shopify_order_id}`}
       </Text>,
-      `$${parseFloat(order.totalPrice || 0).toFixed(2)}`,
-      getFinancialStatusBadge(order.financialStatus),
-      getFulfillmentStatusBadge(order.fulfillmentStatus),
+      `$${parseFloat(order.total_price || 0).toFixed(2)}`,
+      getFinancialStatusBadge(order.financial_status),
+      getFulfillmentStatusBadge(order.fulfillment_status),
       order.notified ? (
         <Badge tone="success">Notified</Badge>
       ) : (
         <Badge tone="warning">Pending</Badge>
       ),
-      new Date(order.shopifyCreatedAt || order.createdAt).toLocaleDateString(),
+      new Date(
+        order.shopify_created_at || order.createdAt
+      ).toLocaleDateString(),
       <Button
         size="slim"
         icon={ViewIcon}
@@ -254,51 +260,53 @@ export default function OrdersPage() {
     });
 
   const filters = (
-    <Filters
-      filters={[
-        {
-          key: "financial_status",
-          label: "Payment Status",
-          filter: (
-            <Select
-              label="Payment Status"
-              labelHidden
-              options={financialStatusOptions}
-              value={financialStatusFilter}
-              onChange={handleFinancialStatusChange}
-            />
-          ),
-        },
-        {
-          key: "fulfillment_status",
-          label: "Fulfillment Status",
-          filter: (
-            <Select
-              label="Fulfillment Status"
-              labelHidden
-              options={fulfillmentStatusOptions}
-              value={fulfillmentStatusFilter}
-              onChange={handleFulfillmentStatusChange}
-            />
-          ),
-        },
-        {
-          key: "vendor",
-          label: "Vendor",
-          filter: (
-            <Select
-              label="Vendor"
-              labelHidden
-              options={vendorOptions}
-              value={vendorFilter}
-              onChange={handleVendorFilterChange}
-            />
-          ),
-        },
-      ]}
-      appliedFilters={appliedFilters}
-      onClearAll={handleFiltersRemove}
-    />
+    <div className="filter-box">
+      <Filters
+        filters={[
+          {
+            key: "financial_status",
+            label: "Payment Status",
+            filter: (
+              <Select
+                label="Payment Status"
+                labelHidden
+                options={financialStatusOptions}
+                value={financialStatusFilter}
+                onChange={handleFinancialStatusChange}
+              />
+            ),
+          },
+          {
+            key: "fulfillment_status",
+            label: "Fulfillment Status",
+            filter: (
+              <Select
+                label="Fulfillment Status"
+                labelHidden
+                options={fulfillmentStatusOptions}
+                value={fulfillmentStatusFilter}
+                onChange={handleFulfillmentStatusChange}
+              />
+            ),
+          },
+          {
+            key: "vendor",
+            label: "Vendor",
+            filter: (
+              <Select
+                label="Vendor"
+                labelHidden
+                options={vendorOptions}
+                value={vendorFilter}
+                onChange={handleVendorFilterChange}
+              />
+            ),
+          },
+        ]}
+        appliedFilters={appliedFilters}
+        onClearAll={handleFiltersRemove}
+      />
+    </div>
   );
 
   // Debug info for investigating single order issue
@@ -478,7 +486,7 @@ export default function OrdersPage() {
                     <Text variant="headingLg" as="h3">
                       {
                         ordersData.orders.filter(
-                          (o) => o.financialStatus === "paid"
+                          (o) => o.financial_status === "paid"
                         ).length
                       }
                     </Text>
@@ -509,8 +517,9 @@ export default function OrdersPage() {
             setIsOrderModalOpen(false);
             setSelectedOrder(null);
           }}
-          title={`Order #${
-            selectedOrder?.shopifyOrderNumber || selectedOrder?.shopifyOrderId
+          title={`Order ${
+            selectedOrder?.shopify_order_number ||
+            selectedOrder?.shopify_order_id
           }`}
           secondaryActions={[
             {
@@ -537,9 +546,8 @@ export default function OrdersPage() {
                           Order ID:
                         </Text>
                         <Text>
-                          #
-                          {orderDetails.order.shopifyOrderNumber ||
-                            orderDetails.order.shopifyOrderId}
+                          {orderDetails.order.shopify_order_number ||
+                            orderDetails.order.shopify_order_id}
                         </Text>
                       </InlineStack>
                       <InlineStack align="space-between">
@@ -549,7 +557,7 @@ export default function OrdersPage() {
                         <Text>
                           $
                           {parseFloat(
-                            orderDetails.order.totalPrice || 0
+                            orderDetails.order.total_price || 0
                           ).toFixed(2)}
                         </Text>
                       </InlineStack>
@@ -558,7 +566,7 @@ export default function OrdersPage() {
                           Payment:
                         </Text>
                         {getFinancialStatusBadge(
-                          orderDetails.order.financialStatus
+                          orderDetails.order.financial_status
                         )}
                       </InlineStack>
                       <InlineStack align="space-between">
@@ -566,7 +574,7 @@ export default function OrdersPage() {
                           Fulfillment:
                         </Text>
                         {getFulfillmentStatusBadge(
-                          orderDetails.order.fulfillmentStatus
+                          orderDetails.order.fulfillment_status
                         )}
                       </InlineStack>
                       <InlineStack align="space-between">
@@ -585,7 +593,7 @@ export default function OrdersPage() {
                         </Text>
                         <Text>
                           {new Date(
-                            orderDetails.order.shopifyCreatedAt
+                            orderDetails.order.shopify_created_at
                           ).toLocaleString()}
                         </Text>
                       </InlineStack>

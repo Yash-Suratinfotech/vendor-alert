@@ -283,13 +283,11 @@ router.post("/manual-sync/:type", async (req, res) => {
         return res.status(400).json({ error: "Invalid sync type" });
     }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: `Manual ${type} sync completed`,
-        result,
-      });
+    res.status(200).json({
+      success: true,
+      message: `Manual ${type} sync completed`,
+      result,
+    });
   } catch (error) {
     console.error(`❌ Manual sync error:`, error);
     res.status(500).json({ error: "Manual sync failed" });

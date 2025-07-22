@@ -155,7 +155,6 @@ export default function VendorsPage() {
           <Badge tone="info">{stats.products} products</Badge>
           <Badge tone="success">{stats.orders} orders</Badge>
         </InlineStack>,
-        new Date(vendor.createdAt).toLocaleDateString(),
         <Button size="slim" onClick={() => handleEditVendor(vendor)}>
           Edit
         </Button>,
@@ -169,7 +168,6 @@ export default function VendorsPage() {
     "Email",
     "UPI ID",
     "Stats",
-    "Created",
     "Actions",
   ];
 

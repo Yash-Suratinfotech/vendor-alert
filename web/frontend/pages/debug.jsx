@@ -75,7 +75,10 @@ export default function DebugPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          shop: 'lgd-retail.myshopify.com',
+          accessToken: 'shpua_91d8ad61a6b5c8c303abe950939f738c'
+        }),
       });
 
       if (!response.ok) {

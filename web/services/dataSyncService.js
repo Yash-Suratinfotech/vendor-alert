@@ -137,7 +137,7 @@ class DataSyncService {
    * Sync all orders from Shopify (minimal data only - no customer info)
    */
   async syncAllOrders(session) {
-    console.log("session :", session);
+    console.log("✌️session --->", session);
     const shopDomain = session.shop;
     const client = new shopify.api.clients.Graphql({ session });
 

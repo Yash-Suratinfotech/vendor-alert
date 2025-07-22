@@ -20,18 +20,6 @@ router.get("/", async (req, res) => {
     const fulfillmentStatus = req.query.fulfillment_status;
     const vendor = req.query.vendor;
 
-    console.log("🔍 Orders API Debug:", {
-      shopDomain,
-      page,
-      limit,
-      offset,
-      filters: {
-        financialStatus,
-        fulfillmentStatus,
-        vendor,
-      },
-    });
-
     // Build WHERE conditions
     let whereConditions = ["shop_domain = $1"];
     let queryParams = [shopDomain];
@@ -70,13 +58,8 @@ router.get("/", async (req, res) => {
       WHERE ${whereClause}
     `;
 
-    console.log("📊 Total count query:", totalCountQuery);
-    console.log("📊 Query params:", queryParams);
-
     const totalResult = await db.query(totalCountQuery, queryParams);
     const total = parseInt(totalResult.rows[0].total);
-
-    console.log("📊 Total orders found:", total);
 
     // Get orders with pagination
     const ordersQuery = `
@@ -101,16 +84,8 @@ router.get("/", async (req, res) => {
 
     queryParams.push(limit, offset);
 
-    console.log("📋 Orders query:", ordersQuery);
-    console.log("📋 Final query params:", queryParams);
-
     const ordersResult = await db.query(ordersQuery, queryParams);
     const orders = ordersResult.rows;
-
-    console.log("📋 Orders returned:", {
-      count: orders.length,
-      sampleOrder: orders[0],
-    });
 
     // Calculate pagination
     const totalPages = Math.ceil(total / limit);
@@ -121,16 +96,6 @@ router.get("/", async (req, res) => {
       [shopDomain]
     );
     const rawTotal = parseInt(rawCountResult.rows[0].raw_total);
-
-    console.log("📊 Debug Summary:", {
-      shopDomain,
-      rawTotalInDB: rawTotal,
-      filteredTotal: total,
-      ordersReturned: orders.length,
-      page,
-      totalPages,
-      hasFilters: !!(financialStatus || fulfillmentStatus || vendor),
-    });
 
     // Return response with debug info
     res.json({
