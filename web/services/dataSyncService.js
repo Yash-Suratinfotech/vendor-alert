@@ -1,24 +1,23 @@
-// web/services/dataSyncService.js
+// web/services/dataSyncService.js - Updated for Order-Based Products Only
 import shopify from "../shopify.js";
 import db from "../db.js";
 
 class DataSyncService {
   constructor() {
-    this.BATCH_SIZE = 50; // Process in batches to avoid timeouts
+    this.BATCH_SIZE = 50;
   }
 
   /**
-   * Perform initial sync when app is installed
+   * Perform initial sync - ONLY orders (which will create products as needed)
    */
   async performInitialSync(session) {
     const shopDomain = session.shop;
     console.log(`🔄 Starting initial sync for shop: ${shopDomain}`);
 
     try {
-      // Log sync start
-      await this.logSyncStart(shopDomain, "initial", "full_sync");
+      await this.logSyncStart(shopDomain, "initial", "orders_and_products");
 
-      // Check if initial sync already completed
+      // Check if already completed
       const shop = await db.query(
         "SELECT initial_sync_completed FROM shops WHERE shop_domain = $1",
         [shopDomain]
@@ -29,10 +28,7 @@ class DataSyncService {
         return;
       }
 
-      // Sync products first (includes vendors extraction)
-      await this.syncAllProducts(session);
-
-      // Sync orders (minimal data only)
+      // Sync orders only - this will automatically create products and vendors
       await this.syncAllOrders(session);
 
       // Mark initial sync as completed
@@ -41,14 +37,14 @@ class DataSyncService {
         [shopDomain]
       );
 
-      await this.logSyncComplete(shopDomain, "initial", "full_sync", "success");
+      await this.logSyncComplete(shopDomain, "initial", "orders_and_products", "success");
       console.log(`✅ Initial sync completed for shop: ${shopDomain}`);
     } catch (error) {
       console.error(`❌ Initial sync failed for ${shopDomain}:`, error);
       await this.logSyncComplete(
         shopDomain,
         "initial",
-        "full_sync",
+        "orders_and_products",
         "error",
         error.message
       );
@@ -57,87 +53,9 @@ class DataSyncService {
   }
 
   /**
-   * Sync all products from Shopify
-   */
-  async syncAllProducts(session) {
-    const shopDomain = session.shop;
-    const client = new shopify.api.clients.Graphql({ session });
-
-    let hasNextPage = true;
-    let cursor = null;
-    let totalSynced = 0;
-
-    console.log(`📦 Starting product sync for ${shopDomain}`);
-
-    while (hasNextPage) {
-      try {
-        const query = `
-          query GetProducts($first: Int!, $after: String) {
-            products(first: $first, after: $after) {
-              edges {
-                node {
-                  id
-                  title
-                  handle
-                  vendor
-                  productType
-                  status
-                  createdAt
-                  updatedAt
-                  variants(first: 100) {
-                    edges {
-                      node {
-                        id
-                        sku
-                        price
-                        inventoryQuantity
-                      }
-                    }
-                  }
-                }
-                cursor
-              }
-              pageInfo {
-                hasNextPage
-              }
-            }
-          }
-        `;
-
-        const response = await client.request(query, {
-          variables: {
-            first: this.BATCH_SIZE,
-            after: cursor,
-          },
-        });
-
-        const products = response.data.products.edges;
-
-        for (const edge of products) {
-          await this.syncProduct(edge.node, shopDomain);
-          totalSynced++;
-        }
-
-        hasNextPage = response.data.products.pageInfo.hasNextPage;
-        cursor =
-          products.length > 0 ? products[products.length - 1].cursor : null;
-
-        console.log(`📦 Synced ${totalSynced} products so far...`);
-      } catch (error) {
-        console.error("Error syncing products batch:", error);
-        throw error;
-      }
-    }
-
-    console.log(`✅ Product sync completed. Total synced: ${totalSynced}`);
-    return totalSynced;
-  }
-
-  /**
-   * Sync all orders from Shopify (minimal data only - no customer info)
+   * Sync all orders and create products/vendors as needed
    */
   async syncAllOrders(session) {
-    console.log("✌️session --->", session);
     const shopDomain = session.shop;
     const client = new shopify.api.clients.Graphql({ session });
 
@@ -145,7 +63,7 @@ class DataSyncService {
     let cursor = null;
     let totalSynced = 0;
 
-    console.log(`📋 Starting order sync for ${shopDomain} (minimal data only)`);
+    console.log(`📋 Starting order sync for ${shopDomain}`);
 
     while (hasNextPage) {
       try {
@@ -156,13 +74,6 @@ class DataSyncService {
                 node {
                   id
                   name
-                  totalPriceSet {
-                    shopMoney {
-                      amount
-                    }
-                  }
-                  displayFinancialStatus
-                  displayFulfillmentStatus
                   lineItems(first: 100) {
                     edges {
                       node {
@@ -170,15 +81,8 @@ class DataSyncService {
                         title
                         vendor
                         quantity
-                        originalUnitPriceSet {
-                          shopMoney {
-                            amount
-                          }
-                        }
-                        totalDiscountSet {
-                          shopMoney {
-                            amount
-                          }
+                        image {
+                          url
                         }
                         product {
                           id
@@ -211,7 +115,7 @@ class DataSyncService {
         const orders = response.data.orders.edges;
 
         for (const edge of orders) {
-          await this.syncOrderMinimal(edge.node, shopDomain);
+          await this.syncOrderWithProducts(edge.node, shopDomain);
           totalSynced++;
         }
 
@@ -230,93 +134,9 @@ class DataSyncService {
   }
 
   /**
-   * Sync individual product
+   * Sync individual order and create products/vendors as needed
    */
-  async syncProduct(productData, shopDomain) {
-    const client = await db.getClient();
-
-    try {
-      await client.query("BEGIN");
-      console.log('✌️productData --->', productData);
-
-      const shopifyProductId = parseInt(
-        productData.id.replace("gid://shopify/Product/", "")
-      );
-
-      // Extract vendor and sync to vendors table
-      if (productData.vendor) {
-        await this.syncVendor(productData.vendor, shopDomain, client);
-      }
-
-      // Get vendor_id if exists
-      let vendorId = null;
-      if (productData.vendor) {
-        const vendorResult = await client.query(
-          "SELECT id FROM vendors WHERE shopify_vendor_name = $1 AND shop_domain = $2",
-          [productData.vendor, shopDomain]
-        );
-        vendorId = vendorResult.rows[0]?.id || null;
-      }
-
-      // Get first variant data for pricing
-      const firstVariant = productData.variants.edges[0]?.node;
-      const price = firstVariant?.price || 0;
-      const sku = firstVariant?.sku || null;
-      const inventoryQuantity = firstVariant?.inventoryQuantity || 0;
-
-      // Upsert product
-      await client.query(
-        `
-        INSERT INTO products (
-          shopify_product_id, name, sku, vendor_name, vendor_id, handle, 
-          product_type, status, inventory_quantity, price, shop_domain,
-          shopify_created_at, shopify_updated_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-        ON CONFLICT (shopify_product_id) 
-        DO UPDATE SET 
-          name = EXCLUDED.name,
-          sku = EXCLUDED.sku,
-          vendor_name = EXCLUDED.vendor_name,
-          vendor_id = EXCLUDED.vendor_id,
-          handle = EXCLUDED.handle,
-          product_type = EXCLUDED.product_type,
-          status = EXCLUDED.status,
-          inventory_quantity = EXCLUDED.inventory_quantity,
-          price = EXCLUDED.price,
-          shopify_updated_at = EXCLUDED.shopify_updated_at,
-          updated_at = NOW()
-      `,
-        [
-          shopifyProductId,
-          productData.title,
-          sku,
-          productData.vendor || null,
-          vendorId,
-          productData.handle,
-          productData.productType,
-          productData.status?.toLowerCase() || "active",
-          inventoryQuantity,
-          price,
-          shopDomain,
-          productData.createdAt,
-          productData.updatedAt,
-        ]
-      );
-
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error syncing product:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Sync individual order (minimal data - NO customer info)
-   */
-  async syncOrderMinimal(orderData, shopDomain) {
+  async syncOrderWithProducts(orderData, shopDomain) {
     const client = await db.getClient();
 
     try {
@@ -325,23 +145,17 @@ class DataSyncService {
       const shopifyOrderId = parseInt(
         orderData.id.replace("gid://shopify/Order/", "")
       );
-      const totalPrice = parseFloat(
-        orderData.totalPriceSet?.shopMoney?.amount || 0
-      );
 
-      // Upsert order with NO customer data - only business data
-      const orderResult = await db.query(
+      // Insert/Update Order
+      const orderResult = await client.query(
         `
         INSERT INTO orders (
-          shopify_order_id, shopify_order_number, total_price, 
-          financial_status, fulfillment_status, shop_domain,
+          shopify_order_id, name, shop_domain,
           shopify_created_at, shopify_updated_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, NOW())
         ON CONFLICT (shopify_order_id) 
         DO UPDATE SET 
-          total_price = EXCLUDED.total_price,
-          financial_status = EXCLUDED.financial_status,
-          fulfillment_status = EXCLUDED.fulfillment_status,
+          name = EXCLUDED.name,
           shopify_updated_at = EXCLUDED.shopify_updated_at,
           updated_at = NOW()
         RETURNING id
@@ -349,9 +163,6 @@ class DataSyncService {
         [
           shopifyOrderId,
           orderData.name,
-          totalPrice,
-          orderData.displayFinancialStatus?.toLowerCase(),
-          orderData.displayFulfillmentStatus?.toLowerCase(),
           shopDomain,
           orderData.createdAt,
           orderData.updatedAt,
@@ -360,15 +171,48 @@ class DataSyncService {
 
       const orderId = orderResult.rows[0].id;
 
-      // Sync line items (this is what we actually need for vendor notifications)
+      // Process line items and create products/vendors as needed
       for (const lineItemEdge of orderData.lineItems.edges) {
-        await this.syncOrderLineItem(lineItemEdge.node, orderId, client);
+        const lineItem = lineItemEdge.node;
+        
+        // Skip if no product data
+        if (!lineItem.product?.id) continue;
+
+        const shopifyProductId = parseInt(
+          lineItem.product.id.replace("gid://shopify/Product/", "")
+        );
+
+        // Create/Update Vendor if exists
+        let vendorId = null;
+        if (lineItem.vendor) {
+          vendorId = await this.ensureVendorExists(lineItem.vendor, shopDomain, client);
+        }
+
+        // Create/Update Product (no duplicates)
+        const productId = await this.ensureProductExists({
+          shopifyProductId,
+          title: lineItem.title,
+          image: lineItem.image?.url,
+          vendorName: lineItem.vendor,
+          vendorId,
+          shopDomain
+        }, client);
+
+        // Create Line Item
+        await client.query(
+          `
+          INSERT INTO order_line_items (
+            order_id, product_id, quantity, shop_domain
+          ) VALUES ($1, $2, $3, $4)
+        `,
+          [orderId, productId, lineItem.quantity, shopDomain]
+        );
       }
 
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
-      console.error("Error syncing order:", error);
+      console.error("Error syncing order with products:", error);
       throw error;
     } finally {
       client.release();
@@ -376,136 +220,80 @@ class DataSyncService {
   }
 
   /**
-   * Sync order line item (FIXED - Handle NULL shopify_line_item_id)
+   * Ensure vendor exists (create if not exists)
    */
-  async syncOrderLineItem(lineItemData, orderId, client) {
-    try {
-      const shopifyLineItemId = lineItemData.id
-        ? parseInt(lineItemData.id.replace("gid://shopify/LineItem/", ""))
-        : null;
+  async ensureVendorExists(vendorName, shopDomain, client) {
+    // Check if vendor exists
+    const existingVendor = await client.query(
+      "SELECT id FROM vendors WHERE name = $1 AND shop_domain = $2",
+      [vendorName, shopDomain]
+    );
 
-      const shopifyProductId = lineItemData.product?.id
-        ? parseInt(
-            lineItemData.product.id.replace("gid://shopify/Product/", "")
-          )
-        : null;
-
-      const shopifyVariantId = lineItemData.variant?.id
-        ? parseInt(
-            lineItemData.variant.id.replace("gid://shopify/ProductVariant/", "")
-          )
-        : null;
-
-      const price = parseFloat(
-        lineItemData.originalUnitPriceSet?.shopMoney?.amount || 0
-      );
-      const totalDiscount = parseFloat(
-        lineItemData.totalDiscountSet?.shopMoney?.amount || 0
-      );
-
-      // Get product_id from our database
-      let productId = null;
-      if (shopifyProductId) {
-        const productResult = await client.query(
-          "SELECT id FROM products WHERE shopify_product_id = $1",
-          [shopifyProductId]
-        );
-        productId = productResult.rows[0]?.id || null;
-      }
-
-      // FIXED: Handle cases where shopify_line_item_id might be null or duplicate
-      if (shopifyLineItemId) {
-        // Use ON CONFLICT only if we have a valid line item ID
-        await client.query(
-          `
-          INSERT INTO order_line_items (
-            order_id, shopify_line_item_id, product_id, shopify_product_id,
-            shopify_variant_id, title, vendor, quantity, price, total_discount
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          ON CONFLICT (shopify_line_item_id) 
-          DO UPDATE SET 
-            product_id = EXCLUDED.product_id,
-            title = EXCLUDED.title,
-            vendor = EXCLUDED.vendor,
-            quantity = EXCLUDED.quantity,
-            price = EXCLUDED.price,
-            total_discount = EXCLUDED.total_discount
-        `,
-          [
-            orderId,
-            shopifyLineItemId,
-            productId,
-            shopifyProductId,
-            shopifyVariantId,
-            lineItemData.title,
-            lineItemData.vendor,
-            lineItemData.quantity,
-            price,
-            totalDiscount,
-          ]
-        );
-      } else {
-        // If no line item ID, just insert (don't use ON CONFLICT)
-        await client.query(
-          `
-          INSERT INTO order_line_items (
-            order_id, shopify_line_item_id, product_id, shopify_product_id,
-            shopify_variant_id, title, vendor, quantity, price, total_discount
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        `,
-          [
-            orderId,
-            null, // shopify_line_item_id is null
-            productId,
-            shopifyProductId,
-            shopifyVariantId,
-            lineItemData.title,
-            lineItemData.vendor,
-            lineItemData.quantity,
-            price,
-            totalDiscount,
-          ]
-        );
-      }
-    } catch (error) {
-      console.error("Error syncing line item:", {
-        lineItemId: lineItemData.id,
-        orderId: orderId,
-        error: error.message,
-      });
-      throw error;
+    if (existingVendor.rows.length > 0) {
+      return existingVendor.rows[0].id;
     }
+
+    // Create new vendor
+    const newVendor = await client.query(
+      `
+      INSERT INTO vendors (name, shop_domain)
+      VALUES ($1, $2)
+      RETURNING id
+    `,
+      [vendorName, shopDomain]
+    );
+
+    return newVendor.rows[0].id;
   }
 
   /**
-   * Sync vendor
+   * Ensure product exists (create if not exists, no duplicates)
    */
-  async syncVendor(vendorName, shopDomain, client = null) {
-    const shouldReleaseClient = !client;
-    if (!client) {
-      client = await db.getClient();
-    }
+  async ensureProductExists(productData, client) {
+    // Check if product exists
+    const existingProduct = await client.query(
+      "SELECT id FROM products WHERE shopify_product_id = $1",
+      [productData.shopifyProductId]
+    );
 
-    try {
-      if (shouldReleaseClient) await client.query("BEGIN");
-
+    if (existingProduct.rows.length > 0) {
+      // Update existing product
       await client.query(
         `
-        INSERT INTO vendors (shopify_vendor_name, name, shop_domain)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (shopify_vendor_name, shop_domain) 
-        DO UPDATE SET updated_at = NOW()
+        UPDATE products 
+        SET title = $2, image = $3, vendor_name = $4, vendor_id = $5, updated_at = NOW()
+        WHERE shopify_product_id = $1
       `,
-        [vendorName, vendorName, shopDomain]
+        [
+          productData.shopifyProductId,
+          productData.title,
+          productData.image,
+          productData.vendorName,
+          productData.vendorId
+        ]
       );
-
-      if (shouldReleaseClient) await client.query("COMMIT");
-    } catch (error) {
-      if (shouldReleaseClient) await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      if (shouldReleaseClient) client.release();
+      return existingProduct.rows[0].id;
     }
+
+    // Create new product
+    const newProduct = await client.query(
+      `
+      INSERT INTO products (
+        shopify_product_id, title, image, vendor_name, vendor_id, shop_domain
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `,
+      [
+        productData.shopifyProductId,
+        productData.title,
+        productData.image,
+        productData.vendorName,
+        productData.vendorId,
+        productData.shopDomain
+      ]
+    );
+
+    return newProduct.rows[0].id;
   }
 
   /**
@@ -516,13 +304,6 @@ class DataSyncService {
 
     try {
       switch (topic) {
-        case "products/create":
-        case "products/update":
-          await this.syncProductFromWebhook(webhookData, shopDomain);
-          break;
-        case "products/delete":
-          await this.deleteProduct(webhookData.id, shopDomain);
-          break;
         case "orders/create":
         case "orders/updated":
         case "orders/paid":
@@ -542,49 +323,13 @@ class DataSyncService {
   }
 
   /**
-   * Sync product from webhook data
-   */
-  async syncProductFromWebhook(productData, shopDomain) {
-    // Transform webhook data to match our sync format
-    const transformedData = {
-      id: `gid://shopify/Product/${productData.id}`,
-      title: productData.title,
-      handle: productData.handle,
-      vendor: productData.vendor,
-      productType: productData.product_type,
-      status: productData.status,
-      createdAt: productData.created_at,
-      updatedAt: productData.updated_at,
-      variants: {
-        edges: productData.variants.map((variant) => ({
-          node: {
-            id: variant.id,
-            sku: variant.sku,
-            price: variant.price,
-            inventoryQuantity: variant.inventory_quantity,
-          },
-        })),
-      },
-    };
-
-    await this.syncProduct(transformedData, shopDomain);
-  }
-
-  /**
-   * Sync order from webhook data (minimal data only)
+   * Sync order from webhook data
    */
   async syncOrderFromWebhook(orderData, shopDomain) {
-    // Transform webhook data to match our sync format (NO customer data)
+    // Transform webhook data to match our sync format
     const transformedData = {
       id: `gid://shopify/Order/${orderData.id}`,
       name: orderData.name,
-      totalPriceSet: {
-        shopMoney: {
-          amount: orderData.total_price,
-        },
-      },
-      displayFinancialStatus: orderData.financial_status,
-      displayFulfillmentStatus: orderData.fulfillment_status,
       lineItems: {
         edges: orderData.line_items.map((item) => ({
           node: {
@@ -592,16 +337,7 @@ class DataSyncService {
             title: item.title,
             vendor: item.vendor,
             quantity: item.quantity,
-            originalUnitPriceSet: {
-              shopMoney: {
-                amount: item.price,
-              },
-            },
-            totalDiscountSet: {
-              shopMoney: {
-                amount: item.total_discount || 0,
-              },
-            },
+            image: item.image || null,
             product: item.product_id
               ? {
                   id: `gid://shopify/Product/${item.product_id}`,
@@ -619,17 +355,7 @@ class DataSyncService {
       updatedAt: orderData.updated_at,
     };
 
-    await this.syncOrderMinimal(transformedData, shopDomain);
-  }
-
-  /**
-   * Delete product
-   */
-  async deleteProduct(productId, shopDomain) {
-    await db.query(
-      "UPDATE products SET status = $1, updated_at = NOW() WHERE shopify_product_id = $2 AND shop_domain = $3",
-      ["deleted", productId, shopDomain]
-    );
+    await this.syncOrderWithProducts(transformedData, shopDomain);
   }
 
   /**
@@ -645,13 +371,7 @@ class DataSyncService {
     );
   }
 
-  async logSyncComplete(
-    shopDomain,
-    syncType,
-    entityType,
-    status,
-    errorMessage = null
-  ) {
+  async logSyncComplete(shopDomain, syncType, entityType, status, errorMessage = null) {
     await db.query(
       `
       UPDATE sync_logs 

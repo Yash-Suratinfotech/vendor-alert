@@ -75,16 +75,6 @@ export default function HomePage() {
 
   const navigationCards = [
     {
-      title: "Products",
-      description: `View and manage ${
-        syncStatus?.counts?.products || 0
-      } products`,
-      icon: ProductIcon,
-      href: "/products",
-      count: syncStatus?.counts?.products || 0,
-      tone: "info",
-    },
-    {
       title: "Vendors",
       description: `Manage ${syncStatus?.counts?.vendors || 0} vendor contacts`,
       icon: PersonIcon,
@@ -139,7 +129,7 @@ export default function HomePage() {
               {navigationCards.map((card, index) => (
                 <Grid.Cell
                   key={index}
-                  columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}
+                  columnSpan={{ xs: 6, sm: 4, md: 4, lg: 4, xl: 4 }}
                 >
                   <Card>
                     <BlockStack gap="300" align="center">

@@ -6,7 +6,6 @@ import serveStatic from "serve-static";
 
 import db from "./db.js";
 import shopify from "./shopify.js";
-import productCreator from "./product-creator.js";
 
 // Import existing routes
 import storeRouter from "./routes/store.js";
@@ -168,26 +167,6 @@ app.get("/api/sync/status", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch sync status" });
   }
 });
-
-// Legacy product routes (for compatibility)
-app.get("/api/products/count", async (req, res) => {
-  try {
-    const session = res.locals.shopify.session;
-    const shopDomain = session.shop;
-
-    const result = await db.query(
-      "SELECT COUNT(*) as count FROM products WHERE shop_domain = $1",
-      [shopDomain]
-    );
-
-    res.json({ count: parseInt(result.rows[0].count) });
-  } catch (error) {
-    console.error("❌ Error fetching product count:", error);
-    res.status(500).json({ error: "Failed to fetch product count" });
-  }
-});
-
-app.post("/api/products", productCreator);
 
 app.use(shopify.cspHeaders());
 app.use(serveStatic(STATIC_PATH, { index: false }));

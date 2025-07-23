@@ -19,10 +19,10 @@ const client = new Client({
 await client.connect();
 
 try {
-  // Create all tables for VendorAlert system (NO CUSTOMER DATA)
+  // Create simplified tables for order-based products only
   await client.query(`
     -- 🏪 Shops Table
-    CREATE TABLE IF NOT EXISTS shops (
+    CREATE TABLE shops (
       id SERIAL PRIMARY KEY,
       shop_domain TEXT UNIQUE NOT NULL,
       access_token TEXT,
@@ -32,11 +32,10 @@ try {
       updated_at TIMESTAMP DEFAULT NOW()
     );
 
-    -- 🏢 Vendors Table (Enhanced for Shopify data)
-    CREATE TABLE IF NOT EXISTS vendors (
+    -- 🏢 Vendors Table (simplified - only order-based vendors)
+    CREATE TABLE vendors (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      shopify_vendor_name VARCHAR(255),
       contact_person VARCHAR(255),
       mobile VARCHAR(15),
       email VARCHAR(255),
@@ -44,39 +43,28 @@ try {
       shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(shopify_vendor_name, shop_domain)
+      UNIQUE(name, shop_domain)
     );
 
-    -- 📦 Products Table (Enhanced for Shopify sync)
-    CREATE TABLE IF NOT EXISTS products (
+    -- 📦 Products Table (only products that appear in orders - NO DUPLICATES)
+    CREATE TABLE products (
       id SERIAL PRIMARY KEY,
       shopify_product_id BIGINT UNIQUE NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      sku VARCHAR(100),
+      title VARCHAR(255) NOT NULL,
+      image TEXT,
       vendor_name VARCHAR(255),
       vendor_id INT REFERENCES vendors(id) ON DELETE SET NULL,
-      handle VARCHAR(255),
-      product_type VARCHAR(255),
-      status VARCHAR(50) DEFAULT 'active',
-      inventory_quantity INT DEFAULT 0,
-      price DECIMAL(10,2),
       shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      shopify_created_at TIMESTAMP,
-      shopify_updated_at TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 📬 Orders Table (NO CUSTOMER DATA - Only business data)
-    CREATE TABLE IF NOT EXISTS orders (
+    -- 📬 Orders Table (simplified - only essential order data)
+    CREATE TABLE orders (
       id SERIAL PRIMARY KEY,
       shopify_order_id BIGINT UNIQUE NOT NULL,
-      shopify_order_number VARCHAR(50),
-      total_price DECIMAL(10,2),
-      financial_status VARCHAR(50),
-      fulfillment_status VARCHAR(50),
-      order_status VARCHAR(50) DEFAULT 'pending',
-      notified BOOLEAN DEFAULT FALSE,
+      name VARCHAR(50) NOT NULL,
+      notification BOOLEAN DEFAULT FALSE,
       shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -84,60 +72,28 @@ try {
       shopify_updated_at TIMESTAMP
     );
 
-    -- 📋 Order Line Items Table (Only product and vendor data) - FIXED UNIQUE CONSTRAINT
-    CREATE TABLE IF NOT EXISTS order_line_items (
+    -- 📋 Order Line Items Table (simplified - only essential line item data)
+    CREATE TABLE order_line_items (
       id SERIAL PRIMARY KEY,
       order_id INT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      shopify_line_item_id BIGINT UNIQUE, -- ADDED UNIQUE CONSTRAINT
-      product_id INT REFERENCES products(id) ON DELETE SET NULL,
-      shopify_product_id BIGINT,
-      shopify_variant_id BIGINT,
-      title VARCHAR(255),
-      vendor VARCHAR(255),
+      product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       quantity INT NOT NULL,
-      price DECIMAL(10,2),
-      total_discount DECIMAL(10,2) DEFAULT 0,
+      shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 📊 Sync Log Table (Track sync operations)
-    CREATE TABLE IF NOT EXISTS sync_logs (
+    -- 📊 Sync Log Table (for tracking sync operations)
+    CREATE TABLE sync_logs (
       id SERIAL PRIMARY KEY,
       shop_domain TEXT NOT NULL,
       sync_type VARCHAR(50) NOT NULL, -- 'initial', 'webhook', 'manual'
-      entity_type VARCHAR(50) NOT NULL, -- 'products', 'orders', 'vendors'
-      status VARCHAR(50) NOT NULL, -- 'success', 'error', 'partial'
+      entity_type VARCHAR(50) NOT NULL, -- 'orders_and_products', 'orders', 'products'
+      status VARCHAR(50) NOT NULL, -- 'running', 'success', 'error'
       records_processed INT DEFAULT 0,
       error_message TEXT,
       started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       completed_at TIMESTAMP
     );
-
-    -- Create indexes for better performance
-    CREATE INDEX IF NOT EXISTS idx_products_shopify_id ON products(shopify_product_id);
-    CREATE INDEX IF NOT EXISTS idx_products_shop_domain ON products(shop_domain);
-    CREATE INDEX IF NOT EXISTS idx_products_vendor_name ON products(vendor_name);
-    
-    CREATE INDEX IF NOT EXISTS idx_orders_shopify_id ON orders(shopify_order_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_shop_domain ON orders(shop_domain);
-    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(financial_status, fulfillment_status);
-    
-    CREATE INDEX IF NOT EXISTS idx_vendors_shop_domain ON vendors(shop_domain);
-    CREATE INDEX IF NOT EXISTS idx_vendors_shopify_name ON vendors(shopify_vendor_name);
-    
-    CREATE INDEX IF NOT EXISTS idx_sync_logs_shop_type ON sync_logs(shop_domain, entity_type);
-    
-    -- Add unique constraint to existing table if it doesn't exist
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.table_constraints 
-            WHERE constraint_name = 'order_line_items_shopify_line_item_id_key' 
-            AND table_name = 'order_line_items'
-        ) THEN
-            ALTER TABLE order_line_items ADD CONSTRAINT order_line_items_shopify_line_item_id_key UNIQUE (shopify_line_item_id);
-        END IF;
-    END $$;
   `);
 
   console.log(

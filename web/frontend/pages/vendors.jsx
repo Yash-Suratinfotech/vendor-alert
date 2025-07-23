@@ -133,8 +133,8 @@ export default function VendorsPage() {
 
   const getVendorStats = (vendor) => {
     return {
-      products: vendor.productCount || 0,
-      orders: vendor.orderCount || 0,
+      products: vendor.stats.productCount || 0,
+      orders: vendor.stats.orderCount || 0,
     };
   };
 
@@ -305,63 +305,6 @@ export default function VendorsPage() {
               )}
             </Card>
           </Layout.Section>
-
-          {/* Vendor Stats Summary */}
-          {vendorsData?.vendors && (
-            <Layout.Section variant="oneThird">
-              <Card>
-                <BlockStack gap="400">
-                  <Text variant="headingMd">Vendor Summary</Text>
-
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {vendorsData.vendors.length}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      Total Vendors
-                    </Text>
-                  </div>
-
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {vendorsData.vendors.reduce(
-                        (sum, vendor) => sum + (vendor.productCount || 0),
-                        0
-                      )}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      Total Products
-                    </Text>
-                  </div>
-
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {vendorsData.vendors.reduce(
-                        (sum, vendor) => sum + (vendor.orderCount || 0),
-                        0
-                      )}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      Total Orders
-                    </Text>
-                  </div>
-
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {
-                        vendorsData.vendors.filter(
-                          (v) => v.mobile || v.email || v.upiId
-                        ).length
-                      }
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      With Contact Info
-                    </Text>
-                  </div>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-          )}
         </Layout>
 
         {/* Edit Vendor Modal */}
@@ -394,6 +337,7 @@ export default function VendorsPage() {
                 value={editFormData.name}
                 onChange={(value) => handleFormChange("name", value)}
                 autoComplete="organization"
+                readOnly
               />
 
               <TextField

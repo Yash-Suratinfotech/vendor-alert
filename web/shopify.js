@@ -14,7 +14,6 @@ import { restResources } from "@shopify/shopify-api/rest/admin/2025-04";
 
 // Use different paths for dev vs production
 const DATABASE_URL = process.env.DATABASE_URL;
-console.log('✌️DATABASE_URL SHOPIFY --->', DATABASE_URL);
 
 const billingConfig = {
   "My Shopify One-Time Charge": {
