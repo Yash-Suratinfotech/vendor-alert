@@ -13,7 +13,7 @@ import vendorRouter from "./routes/vendor.js";
 import webhookRouter from "./routes/webhook.js";
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
-import chatRouter from "./routes/chat.js";
+import chatRouter from "./routes/chat/index.js";
 
 // Import webhook routes
 import PrivacyWebhookHandlers from "./webhook/privacy.js";

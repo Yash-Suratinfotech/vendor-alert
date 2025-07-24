@@ -1,175 +1,12 @@
-// web/routes/chat.js - Simplified WhatsApp-style Chat API
+// web/routes/chat/chat.js - Simplified WhatsApp-style Chat API
 import express from "express";
-import db from "../db.js";
+import db from "../../db.js";
 
 const router = express.Router();
 
-// =================
-// AUTHENTICATION ROUTES
-// =================
+// ============== CONVERSATION ROUTES =================
 
-// POST /chat/auth/vendor - Vendor login by email
-router.post("/auth/vendor", async (req, res) => {
-  try {
-    const { email, phone } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: "Email required for vendor access",
-      });
-    }
-
-    // Find vendor by email in vendors table
-    const vendorResult = await db.query(
-      `SELECT v.*, s.name as shop_name, s.id as shop_id
-       FROM vendors v 
-       JOIN shops s ON s.shop_domain = v.shop_domain
-       WHERE v.email = $1`,
-      [email]
-    );
-
-    if (vendorResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error:
-          "Vendor not found. Contact the store owner to add you as a vendor.",
-      });
-    }
-
-    const vendorData = vendorResult.rows[0];
-
-    // Create or update user account for vendor (NO vendor_id stored)
-    const userResult = await db.query(
-      `INSERT INTO users (username, email, user_type, access_token, phone, is_verified)
-       VALUES ($1, $2, 'vendor', $3, $4, true)
-       ON CONFLICT (email) 
-       DO UPDATE SET 
-         access_token = EXCLUDED.access_token,
-         last_active = NOW(),
-         is_active = true
-       RETURNING *`,
-      [
-        vendorData.name.toLowerCase().replace(/\s+/g, "_"),
-        email,
-        `vendor_${Date.now()}`,
-        phone || vendorData.mobile,
-      ]
-    );
-
-    const user = userResult.rows[0];
-
-    res.status(200).json({
-      status: 200,
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        userType: user.user_type,
-        accessToken: user.access_token,
-        vendorInfo: {
-          name: vendorData.name,
-          contactPerson: vendorData.contact_person,
-          mobile: vendorData.mobile,
-          shopName: vendorData.shop_name,
-          shopId: vendorData.shop_id,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("❌ Vendor auth error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Authentication failed",
-      details: error.message,
-    });
-  }
-});
-
-// POST /chat/auth/store-owner - Store owner login
-router.post("/auth/store-owner", async (req, res) => {
-  try {
-    const session = res.locals.shopify?.session;
-    if (!session) {
-      return res.status(401).json({
-        success: false,
-        error: "Shopify session required",
-      });
-    }
-
-    const shopDomain = session.shop;
-
-    // Get shop info and email
-    const shopResult = await db.query(
-      "SELECT * FROM shops WHERE shop_domain = $1",
-      [shopDomain]
-    );
-
-    if (shopResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Shop not found",
-      });
-    }
-
-    const shop = shopResult.rows[0];
-    const ownerEmail = shop.email || `owner@${shopDomain}`;
-
-    // Create or update store owner user
-    const userResult = await db.query(
-      `INSERT INTO users (username, email, user_type, shop_id, access_token, is_verified)
-       VALUES ($1, $2, 'store_owner', $3, $4, true)
-       ON CONFLICT (email) 
-       DO UPDATE SET 
-         access_token = EXCLUDED.access_token,
-         shop_id = EXCLUDED.shop_id,
-         last_active = NOW(),
-         is_active = true
-       RETURNING *`,
-      [
-        shop.name?.toLowerCase().replace(/\s+/g, "_") || `shop_${shop.id}`,
-        ownerEmail,
-        shop.id,
-        session.accessToken,
-      ]
-    );
-
-    const user = userResult.rows[0];
-
-    res.status(200).json({
-      status: 200,
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        userType: user.user_type,
-        shopId: user.shop_id,
-        accessToken: user.access_token,
-        shop: {
-          id: shop.id,
-          name: shop.name,
-          domain: shop.shop_domain,
-          email: shop.email,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("❌ Store owner auth error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Authentication failed",
-      details: error.message,
-    });
-  }
-});
-
-// =================
-// CONVERSATION ROUTES
-// =================
-
-// GET /api/chat/conversations - Get conversation list for current user
+// GET /chat/conversations - Get conversation list for current user
 router.get("/conversations", async (req, res) => {
   try {
     const { userId, userType, shopId } = req.query;
@@ -262,11 +99,9 @@ router.get("/conversations", async (req, res) => {
   }
 });
 
-// =================
-// MESSAGE ROUTES
-// =================
+// ============== MESSAGE ROUTES =================
 
-// GET /api/chat/messages - Get messages between two users
+// GET /chat/messages - Get messages between two users
 router.get("/messages", async (req, res) => {
   try {
     const { userId, contactId, page = 1, limit = 50 } = req.query;
@@ -335,7 +170,7 @@ router.get("/messages", async (req, res) => {
   }
 });
 
-// POST /api/chat/messages - Send a message
+// POST /chat/messages - Send a message
 router.post("/messages", async (req, res) => {
   try {
     const {
@@ -403,7 +238,7 @@ router.post("/messages", async (req, res) => {
   }
 });
 
-// PUT /api/chat/messages/:id/read - Mark message as read
+// PUT /chat/messages/:id/read - Mark message as read
 router.put("/messages/:id/read", async (req, res) => {
   try {
     const messageId = req.params.id;
@@ -429,11 +264,9 @@ router.put("/messages/:id/read", async (req, res) => {
   }
 });
 
-// =================
-// ORDER NOTIFICATION ROUTES
-// =================
+// ============== ORDER NOTIFICATION ROUTES =================
 
-// POST /api/chat/send-order-notification - Send automated order notification
+// POST /chat/send-order-notification - Send automated order notification
 router.post("/send-order-notification", async (req, res) => {
   try {
     const { orderId, shopId } = req.body;
@@ -591,7 +424,7 @@ router.post("/send-order-notification", async (req, res) => {
   }
 });
 
-// POST /api/chat/vendor-response - Handle vendor response to order (accept/decline)
+// POST /chat/vendor-response - Handle vendor response to order (accept/decline)
 router.post("/vendor-response", async (req, res) => {
   try {
     const { messageId, vendorUserId, response } = req.body; // response: 'accept' or 'decline'

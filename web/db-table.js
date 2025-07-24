@@ -104,7 +104,14 @@ try {
       id SERIAL PRIMARY KEY,
       username VARCHAR(50) UNIQUE NOT NULL,
       email VARCHAR(100) UNIQUE NOT NULL,
-      password VARCHAR(60), -- Optional for vendors
+      password_hash VARCHAR(255),
+      otp VARCHAR(6),
+      otp_expires_at TIMESTAMP,
+      reset_token VARCHAR(255),
+      reset_token_expires_at TIMESTAMP,
+      last_login TIMESTAMP,
+      login_attempts INT DEFAULT 0,
+      locked_until TIMESTAMP,
       user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
       shop_id INTEGER REFERENCES shops(id), -- Only for store_owner type
       access_token TEXT,
