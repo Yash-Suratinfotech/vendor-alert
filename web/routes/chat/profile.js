@@ -12,7 +12,7 @@ router.get("/profile", async (req, res) => {
     // Get user profile
     const userResult = await db.query(
       `SELECT id, username, email, user_type, phone, avatar_url, 
-              created_at, last_login, is_active, is_verified
+              created_at, last_login, is_active, is_verified, shop_id
        FROM users WHERE id = $1`,
       [userId]
     );
