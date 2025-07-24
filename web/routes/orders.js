@@ -1,4 +1,4 @@
-// web/routes/orders.js
+// web/routes/orders.js - FIXED
 import express from "express";
 import db from "../db.js";
 
@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
     const vendor = req.query.vendor;
     const notification = req.query.notification; // 'true', 'false', or undefined
 
-    // Build WHERE conditions
+    // Build WHERE conditions - FIXED parameter counting
     let whereConditions = ["o.shop_domain = $1"];
     let queryParams = [shopDomain];
     let paramCount = 1;
@@ -38,8 +38,8 @@ router.get("/", async (req, res) => {
 
     if (notification !== undefined) {
       paramCount++;
-      whereConditions.push(`o.notification = ${paramCount}`);
-      queryParams.push(notification === 'true');
+      whereConditions.push(`o.notification = $${paramCount}`); // FIXED: Added $ sign
+      queryParams.push(notification === "true");
     }
 
     const whereClause = whereConditions.join(" AND ");
@@ -53,6 +53,10 @@ router.get("/", async (req, res) => {
 
     const totalResult = await db.query(totalCountQuery, queryParams);
     const total = parseInt(totalResult.rows[0].total);
+
+    // FIXED: Proper parameter handling for LIMIT and OFFSET
+    const nextParamCount = paramCount + 1;
+    const offsetParamCount = paramCount + 2;
 
     // Get orders with line items
     const ordersQuery = `
@@ -70,6 +74,7 @@ router.get("/", async (req, res) => {
             'id', oli.id,
             'productId', oli.product_id,
             'quantity', oli.quantity,
+            'notification', oli.notification,
             'productTitle', p.title,
             'productImage', p.image,
             'vendorName', p.vendor_name
@@ -81,13 +86,18 @@ router.get("/", async (req, res) => {
       WHERE ${whereClause}
       GROUP BY o.id
       ORDER BY o.shopify_created_at DESC, o.created_at DESC
-      LIMIT ${paramCount + 1} OFFSET ${paramCount + 2}
+      LIMIT $${nextParamCount} OFFSET $${offsetParamCount}
     `;
 
-    queryParams.push(limit, offset);
+    // FIXED: Proper parameter array
+    const finalParams = [...queryParams, limit, offset];
 
-    const ordersResult = await db.query(ordersQuery, queryParams);
-    const orders = ordersResult.rows.map(order => ({
+    console.log("🔍 Orders Query:", ordersQuery);
+    console.log("🔍 Query Params:", finalParams);
+
+    const ordersResult = await db.query(ordersQuery, finalParams);
+    
+    const orders = ordersResult.rows.map((order) => ({
       id: order.id,
       shopifyOrderId: order.shopify_order_id,
       name: order.name,
@@ -140,6 +150,7 @@ router.get("/:id", async (req, res) => {
             'id', oli.id,
             'productId', oli.product_id,
             'quantity', oli.quantity,
+            'notification', oli.notification,
             'productTitle', p.title,
             'productImage', p.image,
             'vendorName', p.vendor_name,
@@ -228,6 +239,60 @@ router.put("/:id/notification", async (req, res) => {
   }
 });
 
+// PUT /api/orders/:orderId/line-items/:lineItemId/notification - Update line item notification
+router.put("/:orderId/line-items/:lineItemId/notification", async (req, res) => {
+  try {
+    const session = res.locals.shopify.session;
+    const shopDomain = session.shop;
+    const { orderId, lineItemId } = req.params;
+    const { notification } = req.body;
+
+    // Verify order belongs to shop
+    const orderCheck = await db.query(
+      "SELECT id FROM orders WHERE id = $1 AND shop_domain = $2",
+      [orderId, shopDomain]
+    );
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Order not found",
+      });
+    }
+
+    // Update line item notification
+    const result = await db.query(
+      `
+      UPDATE order_line_items 
+      SET notification = $1 
+      WHERE id = $2 AND order_id = $3 AND shop_domain = $4
+      RETURNING *
+    `,
+      [notification, lineItemId, orderId, shopDomain]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Line item not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Line item notification status updated",
+      lineItem: result.rows[0],
+    });
+  } catch (error) {
+    console.error("❌ Error updating line item notification:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update line item notification",
+      details: error.message,
+    });
+  }
+});
+
 // GET /api/orders/stats/summary - Get order statistics
 router.get("/stats/summary", async (req, res) => {
   try {
@@ -238,10 +303,12 @@ router.get("/stats/summary", async (req, res) => {
       `
       SELECT 
         COUNT(*) as total_orders,
-        COUNT(CASE WHEN notification = true THEN 1 END) as notified_orders,
-        COUNT(CASE WHEN notification = false THEN 1 END) as pending_notifications,
+        COUNT(CASE WHEN o.notification = true THEN 1 END) as notified_orders,
+        COUNT(CASE WHEN o.notification = false THEN 1 END) as pending_notifications,
         COUNT(DISTINCT p.vendor_name) as unique_vendors_in_orders,
         SUM(oli.quantity) as total_items_ordered,
+        COUNT(CASE WHEN oli.notification = true THEN 1 END) as notified_line_items,
+        COUNT(CASE WHEN oli.notification = false THEN 1 END) as pending_line_items,
         MIN(o.shopify_created_at) as oldest_order,
         MAX(o.shopify_created_at) as newest_order
       FROM orders o
@@ -262,6 +329,8 @@ router.get("/stats/summary", async (req, res) => {
         pendingNotifications: parseInt(stats.pending_notifications || 0),
         uniqueVendorsInOrders: parseInt(stats.unique_vendors_in_orders || 0),
         totalItemsOrdered: parseInt(stats.total_items_ordered || 0),
+        notifiedLineItems: parseInt(stats.notified_line_items || 0),
+        pendingLineItems: parseInt(stats.pending_line_items || 0),
         oldestOrder: stats.oldest_order,
         newestOrder: stats.newest_order,
       },
@@ -296,6 +365,7 @@ router.get("/vendor/:vendorName", async (req, res) => {
             'id', oli.id,
             'productId', oli.product_id,
             'quantity', oli.quantity,
+            'notification', oli.notification,
             'productTitle', p.title,
             'productImage', p.image
           ) ORDER BY oli.id
@@ -310,7 +380,7 @@ router.get("/vendor/:vendorName", async (req, res) => {
       [shopDomain, vendorName]
     );
 
-    const orders = result.rows.map(order => ({
+    const orders = result.rows.map((order) => ({
       id: order.id,
       shopifyOrderId: order.shopify_order_id,
       name: order.name,
@@ -329,66 +399,6 @@ router.get("/vendor/:vendorName", async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to fetch vendor orders",
-      details: error.message,
-    });
-  }
-});
-
-// Debug endpoint
-router.get("/debug/database", async (req, res) => {
-  try {
-    const session = res.locals.shopify.session;
-    const shopDomain = session.shop;
-
-    // Get comprehensive database stats
-    const stats = await db.query(
-      `
-      SELECT 
-        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as total_orders,
-        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1 AND notification = true) as notified_orders,
-        (SELECT COUNT(*) FROM orders WHERE shop_domain = $1 AND notification = false) as pending_orders,
-        (SELECT COUNT(*) FROM order_line_items oli 
-         JOIN orders o ON oli.order_id = o.id 
-         WHERE o.shop_domain = $1) as total_line_items,
-        (SELECT COUNT(*) FROM products WHERE shop_domain = $1) as total_products,
-        (SELECT COUNT(DISTINCT vendor_name) FROM products WHERE shop_domain = $1 AND vendor_name IS NOT NULL) as unique_vendors,
-        (SELECT MIN(shopify_created_at) FROM orders WHERE shop_domain = $1) as oldest_order,
-        (SELECT MAX(shopify_created_at) FROM orders WHERE shop_domain = $1) as newest_order
-    `,
-      [shopDomain]
-    );
-
-    // Get sample orders
-    const sampleOrders = await db.query(
-      `
-      SELECT 
-        o.shopify_order_id,
-        o.name,
-        o.notification,
-        o.shopify_created_at,
-        COUNT(oli.id) as line_item_count
-      FROM orders o
-      LEFT JOIN order_line_items oli ON oli.order_id = o.id
-      WHERE o.shop_domain = $1 
-      GROUP BY o.id
-      ORDER BY o.shopify_created_at DESC 
-      LIMIT 5
-    `,
-      [shopDomain]
-    );
-
-    res.json({
-      success: true,
-      shopDomain,
-      stats: stats.rows[0],
-      sampleOrders: sampleOrders.rows,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("❌ Error in debug endpoint:", error);
-    res.status(500).json({
-      success: false,
-      error: "Debug query failed",
       details: error.message,
     });
   }

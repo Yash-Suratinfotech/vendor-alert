@@ -13,6 +13,7 @@ import vendorRouter from "./routes/vendor.js";
 import webhookRouter from "./routes/webhook.js";
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
+import chatRouter from "./routes/chat.js";
 
 // Import webhook routes
 import PrivacyWebhookHandlers from "./webhook/privacy.js";
@@ -130,6 +131,7 @@ app.use("/api/vendor", vendorRouter);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/chat", chatRouter);
 
 // Add sync status endpoint
 app.get("/api/sync/status", async (req, res) => {
