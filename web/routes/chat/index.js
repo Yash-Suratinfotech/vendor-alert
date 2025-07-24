@@ -9,8 +9,11 @@ import chatRouters from "./chat.js";
 
 const router = express.Router();
 
+// Auth routes (no authentication required)
 router.use("/auth", authRouters);
-router.use("/", authenticateUser(), profileRouters);
-router.use("/", authenticateUser(), chatRouters);
+
+// Protected routes (authentication required)
+router.use("/", authenticateUser, profileRouters);
+router.use("/", authenticateUser, chatRouters);
 
 export default router;

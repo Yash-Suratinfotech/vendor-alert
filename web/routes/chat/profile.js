@@ -26,52 +26,9 @@ router.get("/profile", async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // Get additional info based on user type
-    let additionalInfo = {};
-
-    if (user.user_type === "vendor") {
-      const vendorResult = await db.query(
-        `SELECT v.*, 
-                COUNT(DISTINCT p.id) as product_count,
-                COUNT(DISTINCT o.id) as order_count
-         FROM vendors v
-         LEFT JOIN products p ON p.vendor_id = v.id
-         LEFT JOIN order_line_items oli ON oli.product_id = p.id
-         LEFT JOIN orders o ON o.id = oli.order_id
-         WHERE v.email = $1
-         GROUP BY v.id`,
-        [user.email]
-      );
-
-      if (vendorResult.rows.length > 0) {
-        additionalInfo = vendorResult.rows[0];
-      }
-    } else if (user.user_type === "store_owner") {
-      const shopResult = await db.query(
-        `SELECT s.*,
-                COUNT(DISTINCT p.id) as product_count,
-                COUNT(DISTINCT o.id) as order_count,
-                COUNT(DISTINCT v.id) as vendor_count
-         FROM shops s
-         LEFT JOIN products p ON p.shop_domain = s.shop_domain
-         LEFT JOIN orders o ON o.shop_domain = s.shop_domain
-         LEFT JOIN vendors v ON v.shop_domain = s.shop_domain
-         WHERE s.id = (SELECT shop_id FROM users WHERE id = $1)
-         GROUP BY s.id`,
-        [userId]
-      );
-
-      if (shopResult.rows.length > 0) {
-        additionalInfo = shopResult.rows[0];
-      }
-    }
-
     res.status(200).json({
       success: true,
-      user: {
-        ...user,
-        ...additionalInfo,
-      },
+      user,
     });
   } catch (error) {
     console.error("❌ Get profile error:", error);

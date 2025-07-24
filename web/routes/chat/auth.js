@@ -19,7 +19,8 @@ router.post("/register", async (req, res) => {
   const client = await db.getClient();
 
   try {
-    const { email, password, userType, phone } = req.body;
+    console.log('✌️req.body --->', req.body);
+    const { email, password, userType } = req.body;
 
     // Validation
     if (!email || !password || !userType) {
@@ -70,16 +71,15 @@ router.post("/register", async (req, res) => {
     const username = email.split("@")[0].toLowerCase();
     const userResult = await client.query(
       `INSERT INTO users (
-        username, email, password_hash, user_type, phone, 
+        username, email, password_hash, user_type, 
         otp, otp_expires_at, is_active, is_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, false)
+      ) VALUES ($1, $2, $3, $4, $5, $6, true, false)
       RETURNING id, username, email, user_type`,
       [
         username,
         email.toLowerCase(),
         hashedPassword,
         userType,
-        phone,
         otp,
         otpExpiresAt,
       ]
@@ -188,26 +188,24 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
+     // Generate token
+    const token = generateToken(user.id, user.email, user.user_type);
+
     // Update user as verified
     await db.query(
       `UPDATE users 
-       SET is_verified = true, otp = NULL, otp_expires_at = NULL, last_active = NOW() 
-       WHERE id = $1`,
-      [user.id]
+      SET is_verified = true, 
+          otp = NULL, 
+          otp_expires_at = NULL, 
+          last_active = NOW(), 
+          access_token = $2 
+      WHERE id = $1`,
+      [user.id, token]
     );
-
-    // Generate token
-    const token = generateToken(user.id, user.email, user.user_type);
 
     res.status(200).json({
       success: true,
       message: "Email verified successfully",
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        userType: user.user_type,
-      },
     });
   } catch (error) {
     console.error("❌ OTP verification error:", error);
@@ -366,27 +364,6 @@ router.post("/login", async (req, res) => {
       [user.id]
     );
 
-    // Get additional user info based on type
-    let additionalInfo = {};
-
-    if (user.user_type === "vendor") {
-      const vendorResult = await db.query(
-        "SELECT name, contact_person, mobile FROM vendors WHERE email = $1",
-        [user.email]
-      );
-      if (vendorResult.rows.length > 0) {
-        additionalInfo = vendorResult.rows[0];
-      }
-    } else if (user.user_type === "store_owner" && user.shop_id) {
-      const shopResult = await db.query(
-        "SELECT name, shop_domain FROM shops WHERE id = $1",
-        [user.shop_id]
-      );
-      if (shopResult.rows.length > 0) {
-        additionalInfo = shopResult.rows[0];
-      }
-    }
-
     // Generate token
     const token = generateToken(user.id, user.email, user.user_type);
 
@@ -394,12 +371,7 @@ router.post("/login", async (req, res) => {
       success: true,
       message: "Login successful",
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        userType: user.user_type,
-        ...additionalInfo,
-      },
+      user: user
     });
   } catch (error) {
     console.error("❌ Login error:", error);

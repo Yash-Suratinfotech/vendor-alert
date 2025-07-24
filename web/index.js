@@ -3,6 +3,7 @@ import { join } from "path";
 import { readFileSync } from "fs";
 import express from "express";
 import serveStatic from "serve-static";
+import cors from "cors";
 
 import db from "./db.js";
 import shopify from "./shopify.js";
@@ -35,6 +36,8 @@ const STATIC_PATH =
     : `${process.cwd()}/frontend/`;
 
 const app = express();
+
+app.use(cors())
 
 // Trust proxy for accurate IP detection
 app.set("trust proxy", true);
