@@ -115,6 +115,7 @@ router.get("/:id", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Vendor not found",
       });
@@ -228,6 +229,7 @@ router.put("/:id", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Vendor not found",
       });

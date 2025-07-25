@@ -19,7 +19,6 @@ export default {
 
       // Log the request for compliance tracking (but don't store customer info)
       console.log(`Customer data request:`, {
-        shop_id: payload.shop_id,
         shop_domain: payload.shop_domain,
         data_request_id: payload.data_request?.id,
         orders_requested: payload.orders_requested?.length || 0,
@@ -58,7 +57,6 @@ export default {
 
       // Since we don't store actual customer personal data, just log the request
       console.log(`Customer redaction request:`, {
-        shop_id: payload.shop_id,
         shop_domain: payload.shop_domain,
         orders_to_redact: payload.orders_to_redact?.length || 0,
       });
@@ -119,7 +117,7 @@ export default {
         await client.query("DELETE FROM sync_logs WHERE shop_domain = $1", [
           shop,
         ]);
-        await client.query("DELETE FROM shops WHERE shop_domain = $1", [shop]);
+        await client.query("DELETE FROM users WHERE shop_domain = $1", [shop]);
 
         await client.query("COMMIT");
         client.release();

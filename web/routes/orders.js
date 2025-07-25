@@ -92,9 +92,6 @@ router.get("/", async (req, res) => {
     // FIXED: Proper parameter array
     const finalParams = [...queryParams, limit, offset];
 
-    console.log("🔍 Orders Query:", ordersQuery);
-    console.log("🔍 Query Params:", finalParams);
-
     const ordersResult = await db.query(ordersQuery, finalParams);
     
     const orders = ordersResult.rows.map((order) => ({
@@ -126,6 +123,7 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching orders:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch orders",
       details: error.message,
@@ -168,6 +166,7 @@ router.get("/:id", async (req, res) => {
 
     if (orderResult.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Order not found",
       });
@@ -192,6 +191,7 @@ router.get("/:id", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching order details:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch order details",
       details: error.message,
@@ -219,6 +219,7 @@ router.put("/:id/notification", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Order not found",
       });
@@ -232,6 +233,7 @@ router.put("/:id/notification", async (req, res) => {
   } catch (error) {
     console.error("❌ Error updating notification status:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to update notification status",
       details: error.message,
@@ -255,6 +257,7 @@ router.put("/:orderId/line-items/:lineItemId/notification", async (req, res) => 
 
     if (orderCheck.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Order not found",
       });
@@ -273,6 +276,7 @@ router.put("/:orderId/line-items/:lineItemId/notification", async (req, res) => 
 
     if (result.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Line item not found",
       });
@@ -286,6 +290,7 @@ router.put("/:orderId/line-items/:lineItemId/notification", async (req, res) => 
   } catch (error) {
     console.error("❌ Error updating line item notification:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to update line item notification",
       details: error.message,
@@ -338,6 +343,7 @@ router.get("/stats/summary", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching order stats:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch order statistics",
       details: error.message,
@@ -397,6 +403,7 @@ router.get("/vendor/:vendorName", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching vendor orders:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch vendor orders",
       details: error.message,

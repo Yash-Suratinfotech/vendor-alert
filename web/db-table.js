@@ -21,18 +21,35 @@ await client.connect();
 try {
   // Create simplified tables for order-based products only
   await client.query(`
-    -- 🏪 Shops Table
-    CREATE TABLE shops (
+    -- 🏪 Users Table - For Shop owner and vendor
+    CREATE TABLE users (
       id SERIAL PRIMARY KEY,
-      shop_domain TEXT UNIQUE NOT NULL,
+      username VARCHAR(50),
+      email VARCHAR(100) UNIQUE NOT NULL,
+      password_hash VARCHAR(255),
       access_token TEXT,
-      name VARCHAR(100),
-      email VARCHAR(50),
-      shop_owner VARCHAR(100),
-      shopify_shop_id BIGINT,
+      phone VARCHAR(15),
+      avatar_url TEXT,
+      shop_domain VARCHAR(50) UNIQUE, -- Only for store_owner type
+      user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
       initial_sync_completed BOOLEAN DEFAULT FALSE,
-      installed_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
+      otp VARCHAR(6),
+      otp_expires_at TIMESTAMP,
+      reset_token VARCHAR(255),
+      reset_token_expires_at TIMESTAMP,
+      last_login TIMESTAMP,
+      login_attempts INT DEFAULT 0,
+      locked_until TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_active TIMESTAMP DEFAULT NOW(),
+      is_active BOOLEAN DEFAULT true,
+      is_verified BOOLEAN DEFAULT false,
+      -- Ensure proper user associations
+      CONSTRAINT user_association_check CHECK (
+        (user_type = 'store_owner' AND shop_domain IS NOT NULL) OR
+        (user_type = 'vendor')
+      )
     );
 
     -- 🏢 Vendors Table (simplified - only order-based vendors)
@@ -43,7 +60,7 @@ try {
       mobile VARCHAR(15),
       email VARCHAR(255),
       upi_id VARCHAR(100),
-      shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
+      shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(name, shop_domain)
@@ -57,7 +74,7 @@ try {
       image TEXT,
       vendor_name VARCHAR(255),
       vendor_id INT REFERENCES vendors(id) ON DELETE SET NULL,
-      shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
+      shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -68,7 +85,7 @@ try {
       shopify_order_id BIGINT UNIQUE NOT NULL,
       name VARCHAR(50) NOT NULL,
       notification BOOLEAN DEFAULT FALSE,
-      shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
+      shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       shopify_created_at TIMESTAMP,
@@ -82,14 +99,14 @@ try {
       product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       quantity INT NOT NULL,
       notification BOOLEAN DEFAULT FALSE,
-      shop_domain TEXT NOT NULL REFERENCES shops(shop_domain) ON DELETE CASCADE,
+      shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     -- 📊 Sync Log Table (for tracking sync operations)
     CREATE TABLE sync_logs (
       id SERIAL PRIMARY KEY,
-      shop_domain TEXT NOT NULL,
+      shop_domain VARCHAR(50) NOT NULL,
       sync_type VARCHAR(50) NOT NULL, -- 'initial', 'webhook', 'manual'
       entity_type VARCHAR(50) NOT NULL, -- 'orders_and_products', 'orders', 'products'
       status VARCHAR(50) NOT NULL, -- 'running', 'success', 'error'
@@ -97,36 +114,6 @@ try {
       error_message TEXT,
       started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       completed_at TIMESTAMP
-    );
-
-    -- 👤 Users Table - Simplified for email-based matching
-    CREATE TABLE users (
-      id SERIAL PRIMARY KEY,
-      username VARCHAR(50) UNIQUE NOT NULL,
-      email VARCHAR(100) UNIQUE NOT NULL,
-      password_hash VARCHAR(255),
-      otp VARCHAR(6),
-      otp_expires_at TIMESTAMP,
-      reset_token VARCHAR(255),
-      reset_token_expires_at TIMESTAMP,
-      last_login TIMESTAMP,
-      login_attempts INT DEFAULT 0,
-      locked_until TIMESTAMP,
-      user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
-      shop_id INTEGER REFERENCES shops(id), -- Only for store_owner type
-      access_token TEXT,
-      profile_data JSONB DEFAULT '{}',
-      phone VARCHAR(15),
-      avatar_url TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      last_active TIMESTAMP DEFAULT NOW(),
-      is_active BOOLEAN DEFAULT true,
-      is_verified BOOLEAN DEFAULT false,
-      -- Ensure proper user associations
-      CONSTRAINT user_association_check CHECK (
-        (user_type = 'store_owner' AND shop_id IS NOT NULL) OR
-        (user_type = 'vendor')
-      )
     );
 
     -- 💬 Messages Table - Direct messaging between users
@@ -156,14 +143,6 @@ try {
       is_read BOOLEAN DEFAULT false,
       UNIQUE(message_id)
     );
-
-    -- Performance Indexes
-    CREATE INDEX idx_messages_sender_receiver ON messages(sender_id, receiver_id, created_at);
-    CREATE INDEX idx_messages_receiver_sender ON messages(receiver_id, sender_id, created_at);
-    CREATE INDEX idx_messages_type ON messages(message_type, created_at);
-    CREATE INDEX idx_message_recipients_read ON message_recipients(is_read, delivery_status);
-    CREATE INDEX idx_users_email ON users(email, user_type);
-    CREATE INDEX idx_users_shop ON users(shop_id) WHERE shop_id IS NOT NULL;
   `);
 
   console.log("✅ All VendorAlert tables created successfully");

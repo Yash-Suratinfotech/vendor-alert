@@ -1,4 +1,4 @@
-// web/routes/webhook.js 
+// web/routes/webhook.js
 import express from "express";
 import db from "../db.js";
 import dataSyncService from "../services/dataSyncService.js";
@@ -21,7 +21,9 @@ router.post("/orders", verifyWebhook, async (req, res) => {
     console.log(`📋 Order webhook received: ${topic} for shop: ${shop}`);
 
     if (!shop) {
-      return res.status(400).json({ error: "Missing shop domain" });
+      return res
+        .status(400)
+        .json({ status: 400, error: "Missing shop domain" });
     }
 
     // Process only the data we need for vendor alerts
@@ -49,10 +51,10 @@ router.post("/orders", verifyWebhook, async (req, res) => {
       await handleVendorNotification(filteredOrderData, shop);
     }
 
-    res.status(200).json({ success: true, message: "Order webhook processed" });
+    res.status(200).json({ status: 200, success: true, message: "Order webhook processed" });
   } catch (error) {
     console.error("❌ Order webhook error:", error);
-    res.status(500).json({ error: "Failed to process order webhook" });
+    res.status(500).json({ status: 500, error: "Failed to process order webhook" });
   }
 });
 
@@ -190,7 +192,7 @@ router.post("/privacy/shop-redact", verifyWebhook, async (req, res) => {
       await client.query("DELETE FROM sync_logs WHERE shop_domain = $1", [
         shop,
       ]);
-      await client.query("DELETE FROM shops WHERE shop_domain = $1", [shop]);
+      await client.query("DELETE FROM users WHERE shop_domain = $1", [shop]);
 
       await client.query("COMMIT");
       console.log(`✅ Shop data cleaned for: ${shop}`);
@@ -223,7 +225,7 @@ router.post("/manual-sync/:type", async (req, res) => {
     const shop = req.body.shop || req.headers["x-shopify-shop-domain"];
 
     if (!shop) {
-      return res.status(400).json({ error: "Shop domain required" });
+      return res.status(400).json({ status: 400, error: "Shop domain required" });
     }
 
     const session = { shop: shop, accessToken: req.body.accessToken };
@@ -237,6 +239,7 @@ router.post("/manual-sync/:type", async (req, res) => {
         break;
       default:
         return res.status(400).json({
+          status: 400,
           error: "Invalid sync type. Use 'orders' or 'full'",
         });
     }
@@ -249,6 +252,7 @@ router.post("/manual-sync/:type", async (req, res) => {
   } catch (error) {
     console.error(`❌ Manual sync error:`, error);
     res.status(500).json({
+      status: 500,
       error: "Manual sync failed",
       details: error.message,
     });
@@ -291,7 +295,7 @@ router.get("/sync/status", async (req, res) => {
         (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as order_count,
         (SELECT COUNT(*) FROM vendors WHERE shop_domain = $1) as vendor_count,
         (SELECT COUNT(*) FROM sync_logs WHERE shop_domain = $1 AND status = 'running') as running_syncs
-      FROM shops WHERE shop_domain = $1
+      FROM users WHERE shop_domain = $1
     `,
       [shop]
     );

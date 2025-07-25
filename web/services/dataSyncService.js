@@ -8,6 +8,85 @@ class DataSyncService {
   }
 
   /**
+   * Handles shop authentication and initial user/shop setup.
+   */
+  async handleShopAuthentication(session) {
+    console.log("✅ OAuth Callback - Shop authenticated:", session.shop);
+
+    try {
+      const graphqlClient = new shopify.api.clients.Graphql({ session });
+      const shopDataRes = await graphqlClient.query({
+        data: {
+          query: `
+            {
+              shop {
+                id
+                name
+                email
+                shopOwnerName
+                myshopifyDomain
+                currencyCode
+              }
+            }
+          `,
+        },
+      });
+
+      const shopData = shopDataRes.body.data.shop;
+      const client = await db.getClient();
+      await client.query("BEGIN");
+
+      // Check if user (store_owner) already exists
+      const existingUser = await client.query(
+        "SELECT id FROM users WHERE email = $1 AND user_type = 'store_owner'",
+        [shopData.email]
+      );
+
+      let userId;
+
+      if (existingUser.rows.length === 0) {
+        // Insert new store_owner
+        const newUser = await client.query(
+          `INSERT INTO users 
+          (username, email, user_type, shop_domain, access_token, is_verified, is_active)
+          VALUES ($1, $2, 'store_owner', $3, $4, true, true)
+          RETURNING id`,
+          [
+            shopData.shopOwnerName || shopData.name,
+            shopData.email,
+            session.shop,
+            session.accessToken,
+          ]
+        );
+        userId = newUser.rows[0].id;
+        console.log("🆕 New store_owner user created:", shopData.email);
+        console.log("🚀 Starting initial data sync for:", session.shop);
+
+        // Run initial sync in background (don't wait for completion)
+        this.performInitialSync(session).catch((error) => {
+          console.error("❌ Initial sync failed:", error);
+        });
+      } else {
+        // Update existing store_owner
+        userId = existingUser.rows[0].id;
+        await client.query(
+          `UPDATE users 
+          SET access_token = $1, updated_at = NOW()
+          WHERE id = $2`,
+          [session.accessToken, userId]
+        );
+        console.log("🔄 Existing store_owner updated:", shopData.email);
+      }
+
+      await client.query("COMMIT");
+      client.release();
+    } catch (error) {
+      console.error("❌ Error in OAuth callback during shop setup:", error);
+      throw error; // Re-throw to ensure the original error is propagated
+    }
+  }
+
+  /**
    * Perform initial sync - ONLY orders (which will create products as needed)
    */
   async performInitialSync(session) {
@@ -19,7 +98,7 @@ class DataSyncService {
 
       // Check if already completed
       const shop = await db.query(
-        "SELECT initial_sync_completed FROM shops WHERE shop_domain = $1",
+        "SELECT initial_sync_completed FROM users WHERE shop_domain = $1",
         [shopDomain]
       );
 
@@ -33,11 +112,16 @@ class DataSyncService {
 
       // Mark initial sync as completed
       await db.query(
-        "UPDATE shops SET initial_sync_completed = TRUE, updated_at = NOW() WHERE shop_domain = $1",
+        "UPDATE users SET initial_sync_completed = TRUE, updated_at = NOW() WHERE shop_domain = $1",
         [shopDomain]
       );
 
-      await this.logSyncComplete(shopDomain, "initial", "orders_and_products", "success");
+      await this.logSyncComplete(
+        shopDomain,
+        "initial",
+        "orders_and_products",
+        "success"
+      );
       console.log(`✅ Initial sync completed for shop: ${shopDomain}`);
     } catch (error) {
       console.error(`❌ Initial sync failed for ${shopDomain}:`, error);

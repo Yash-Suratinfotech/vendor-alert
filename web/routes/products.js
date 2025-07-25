@@ -110,6 +110,7 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("❌ Failed to fetch products:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch products",
       details: error.message,
@@ -143,6 +144,7 @@ router.get("/:id", async (req, res) => {
 
     if (productResult.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Product not found",
       });
@@ -228,6 +230,7 @@ router.get("/:id", async (req, res) => {
   } catch (error) {
     console.error("❌ Failed to fetch product details:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch product details",
       details: error.message,
@@ -278,6 +281,7 @@ router.get("/vendor/:vendorId", async (req, res) => {
   } catch (error) {
     console.error("❌ Failed to fetch vendor products:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch vendor products",
       details: error.message,
@@ -303,6 +307,7 @@ router.get("/count", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching product count:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch product count",
     });
@@ -348,6 +353,7 @@ router.get("/stats/summary", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching product stats:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch product statistics",
     });

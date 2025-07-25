@@ -9,12 +9,12 @@ import db from "./db.js";
 import shopify from "./shopify.js";
 
 // Import existing routes
-import storeRouter from "./routes/store.js";
 import vendorRouter from "./routes/vendor.js";
 import webhookRouter from "./routes/webhook.js";
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
 import chatRouter from "./routes/chat/index.js";
+import settingsApi from "./routes/settings.js";
 
 // Import webhook routes
 import PrivacyWebhookHandlers from "./webhook/privacy.js";
@@ -37,7 +37,7 @@ const STATIC_PATH =
 
 const app = express();
 
-app.use(cors())
+app.use(cors());
 
 // Trust proxy for accurate IP detection
 app.set("trust proxy", true);
@@ -50,54 +50,10 @@ app.get(
   async (req, res, next) => {
     const session = res.locals.shopify?.session;
     if (session) {
-      console.log("✅ OAuth Callback - Shop authenticated:", session.shop);
-
       try {
-        const client = await db.getClient();
-        await client.query("BEGIN");
-
-        // Check if shop already exists
-        const existingShop = await client.query(
-          "SELECT id, initial_sync_completed FROM shops WHERE shop_domain = $1",
-          [session.shop]
-        );
-
-        let isNewInstall = false;
-
-        if (existingShop.rows.length === 0) {
-          // Insert new shop
-          await client.query(
-            `INSERT INTO shops (shop_domain, access_token, shopify_shop_id) 
-             VALUES ($1, $2, $3)`,
-            [session.shop, session.accessToken, null]
-          );
-          isNewInstall = true;
-          console.log("🆕 New shop registered:", session.shop);
-        } else {
-          // Update existing shop
-          await client.query(
-            `UPDATE shops 
-             SET access_token = $2, updated_at = NOW() 
-             WHERE shop_domain = $1`,
-            [session.shop, session.accessToken]
-          );
-          console.log("🔄 Existing shop updated:", session.shop);
-        }
-
-        await client.query("COMMIT");
-        client.release();
-
-        // Perform initial sync for new installations
-        if (isNewInstall || !existingShop.rows[0]?.initial_sync_completed) {
-          console.log("🚀 Starting initial data sync for:", session.shop);
-
-          // Run initial sync in background (don't wait for completion)
-          dataSyncService.performInitialSync(session).catch((error) => {
-            console.error("❌ Initial sync failed:", error);
-          });
-        }
+        await dataSyncService.handleShopAuthentication(session);
       } catch (error) {
-        console.error("❌ Error during OAuth callback:", error);
+        console.error("❌ Error in OAuth callback:", error);
       }
     } else {
       console.log("⚠️ No session found in OAuth callback!");
@@ -129,7 +85,7 @@ app.use("/api/*", shopify.validateAuthenticatedSession());
 app.use(express.json());
 
 // Mount API routes
-app.use("/api/store", storeRouter);
+app.use("/api/settings", settingsApi);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/products", productsRouter);
@@ -150,7 +106,7 @@ app.get("/api/sync/status", async (req, res) => {
         (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as order_count,
         (SELECT COUNT(*) FROM vendors WHERE shop_domain = $1) as vendor_count,
         (SELECT COUNT(*) FROM sync_logs WHERE shop_domain = $1 AND status = 'running') as running_syncs
-      FROM shops WHERE shop_domain = $1
+      FROM users WHERE shop_domain = $1
     `,
       [shopDomain]
     );
@@ -169,7 +125,7 @@ app.get("/api/sync/status", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error fetching sync status:", error);
-    res.status(500).json({ error: "Failed to fetch sync status" });
+    res.status(500).json({ status: 500, error: "Failed to fetch sync status" });
   }
 });
 

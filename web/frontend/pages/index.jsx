@@ -13,7 +13,6 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery } from "react-query";
 import {
-  ProductIcon,
   PersonIcon,
   OrderIcon,
   SettingsIcon,

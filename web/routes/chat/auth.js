@@ -19,21 +19,13 @@ router.post("/register", async (req, res) => {
   const client = await db.getClient();
 
   try {
-    console.log('✌️req.body --->', req.body);
-    const { email, password, userType } = req.body;
+    const { email, password } = req.body;
 
     // Validation
-    if (!email || !password || !userType) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
         error: "Email, password, and user type are required",
-      });
-    }
-
-    if (!["vendor", "store_owner"].includes(userType)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid user type",
       });
     }
 
@@ -55,6 +47,7 @@ router.post("/register", async (req, res) => {
     if (existingUser.rows.length > 0) {
       await client.query("ROLLBACK");
       return res.status(409).json({
+        status: 409,
         success: false,
         error: "Email already registered",
       });
@@ -73,16 +66,9 @@ router.post("/register", async (req, res) => {
       `INSERT INTO users (
         username, email, password_hash, user_type, 
         otp, otp_expires_at, is_active, is_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, true, false)
+      ) VALUES ($1, $2, $3, 'vendor', $4, $5, true, false)
       RETURNING id, username, email, user_type`,
-      [
-        username,
-        email.toLowerCase(),
-        hashedPassword,
-        userType,
-        otp,
-        otpExpiresAt,
-      ]
+      [username, email.toLowerCase(), hashedPassword, otp, otpExpiresAt]
     );
 
     const user = userResult.rows[0];
@@ -157,6 +143,7 @@ router.post("/verify-otp", async (req, res) => {
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "User not found",
       });
@@ -188,7 +175,7 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
-     // Generate token
+    // Generate token
     const token = generateToken(user.id, user.email, user.user_type);
 
     // Update user as verified
@@ -237,6 +224,7 @@ router.post("/resend-otp", async (req, res) => {
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "User not found",
       });
@@ -293,13 +281,14 @@ router.post("/login", async (req, res) => {
     // Get user
     const userResult = await db.query(
       `SELECT id, email, password_hash, user_type, is_active, is_verified, 
-              login_attempts, locked_until, shop_id
+              login_attempts, locked_until, shop_domain
        FROM users WHERE email = $1`,
       [email.toLowerCase()]
     );
 
     if (userResult.rows.length === 0) {
       return res.status(401).json({
+        status: 401,
         success: false,
         error: "Invalid email or password",
       });
@@ -310,6 +299,8 @@ router.post("/login", async (req, res) => {
     // Check if account is locked
     if (user.locked_until && new Date() < new Date(user.locked_until)) {
       return res.status(401).json({
+        status: 401,
+        status: 401,
         success: false,
         error: "Account is temporarily locked. Please try again later.",
       });
@@ -318,6 +309,8 @@ router.post("/login", async (req, res) => {
     // Check if account is active
     if (!user.is_active) {
       return res.status(401).json({
+        status: 401,
+        status: 401,
         success: false,
         error: "Account is deactivated. Please contact support.",
       });
@@ -326,6 +319,8 @@ router.post("/login", async (req, res) => {
     // Check if email is verified
     if (!user.is_verified) {
       return res.status(401).json({
+        status: 401,
+        status: 401,
         success: false,
         error: "Please verify your email first",
         requiresVerification: true,
@@ -350,6 +345,8 @@ router.post("/login", async (req, res) => {
       );
 
       return res.status(401).json({
+        status: 401,
+        status: 401,
         success: false,
         error: "Invalid email or password",
         attemptsRemaining: Math.max(0, 5 - attempts),
@@ -371,7 +368,7 @@ router.post("/login", async (req, res) => {
       success: true,
       message: "Login successful",
       token,
-      user: user
+      user: user,
     });
   } catch (error) {
     console.error("❌ Login error:", error);

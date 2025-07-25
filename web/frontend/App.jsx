@@ -20,6 +20,9 @@ export default function App() {
             <a href="/vendors" rel="vendors">
               Vendors
             </a>
+            <a href="/settings" rel="setting">
+              Settings
+            </a>
             <a href="/debug" rel="Debug & Sync">
               Debug & Sync
             </a>

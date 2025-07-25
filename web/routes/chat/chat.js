@@ -35,12 +35,12 @@ router.get("/conversations", async (req, res) => {
            WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false) as unread_count
          FROM vendors v
          JOIN users u ON u.email = v.email AND u.user_type = 'vendor'
-         WHERE v.shop_domain = (SELECT shop_domain FROM shops WHERE id = $2)
+         WHERE v.shop_domain = (SELECT shop_domain FROM users WHERE id = $1 AND user_type = 'store_owner')
          ORDER BY last_message_time DESC NULLS LAST`,
-        [userId, shopId]
+        [userId]
       );
     } else if (userType === "vendor") {
-      // Get all store owners from shops where this vendor exists
+      // Get all store owners from users where this vendor exists
       conversations = await db.query(
         `SELECT DISTINCT
           u.id as contact_id,
@@ -48,8 +48,8 @@ router.get("/conversations", async (req, res) => {
           u.email as contact_email,
           u.avatar_url as contact_avatar,
           'store_owner' as contact_type,
-          s.name as shop_name,
-          s.shop_domain,
+          u.username as shop_name, -- Use store_owner's username as shop_name
+          u.shop_domain,
           (SELECT content FROM messages 
            WHERE (sender_id = $1 AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = $1)
            ORDER BY created_at DESC LIMIT 1) as last_message,
@@ -59,10 +59,9 @@ router.get("/conversations", async (req, res) => {
           (SELECT COUNT(*) FROM messages m
            JOIN message_recipients mr ON mr.message_id = m.id
            WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false) as unread_count
-         FROM vendors v
-         JOIN shops s ON s.shop_domain = v.shop_domain
-         JOIN users u ON u.shop_id = s.id AND u.user_type = 'store_owner'
-         WHERE v.email = (SELECT email FROM users WHERE id = $1)
+         FROM users u
+         WHERE u.user_type = 'store_owner'
+           AND u.shop_domain = (SELECT shop_domain FROM users WHERE id = $1 AND user_type = 'vendor')
          ORDER BY last_message_time DESC NULLS LAST`,
         [userId]
       );
@@ -226,23 +225,56 @@ router.post("/messages", async (req, res) => {
       [message.id]
     );
 
+    // Fetch full enriched message like in GET API
+    const enrichedMessage = await client.query(
+      `SELECT 
+        m.*,
+        u_sender.username as sender_username,
+        u_sender.user_type as sender_type,
+        u_receiver.username as receiver_username,
+        mr.is_read,
+        mr.read_at,
+        mr.delivery_status,
+        mr.is_accept
+       FROM messages m
+       JOIN users u_sender ON u_sender.id = m.sender_id
+       JOIN users u_receiver ON u_receiver.id = m.receiver_id
+       LEFT JOIN message_recipients mr ON mr.message_id = m.id
+       WHERE m.id = $1`,
+      [message.id]
+    );
+
     await client.query("COMMIT");
     client.release();
+
+    const msg = enrichedMessage.rows[0];
+    const formattedMessage = {
+      id: msg.id,
+      content: msg.content,
+      messageType: msg.message_type,
+      fileUrl: msg.file_url,
+      fileName: msg.file_name,
+      orderData: msg.order_data,
+      sender: {
+        id: msg.sender_id,
+        username: msg.sender_username,
+        type: msg.sender_type,
+      },
+      receiver: {
+        id: msg.receiver_id,
+        username: msg.receiver_username,
+      },
+      isRead: msg.is_read,
+      readAt: msg.read_at,
+      deliveryStatus: msg.delivery_status,
+      isAccept: msg.is_accept,
+      createdAt: msg.created_at,
+    };
 
     res.status(200).json({
       status: 200,
       success: true,
-      message: {
-        id: message.id,
-        senderId: message.sender_id,
-        receiverId: message.receiver_id,
-        content: message.content,
-        messageType: message.message_type,
-        fileUrl: message.file_url,
-        fileName: message.file_name,
-        orderData: message.order_data,
-        createdAt: message.created_at,
-      },
+      message: formattedMessage,
     });
   } catch (error) {
     console.error("❌ Error sending message:", error);
@@ -253,6 +285,7 @@ router.post("/messages", async (req, res) => {
     });
   }
 });
+
 
 // PUT /chat/messages/:id/read - Mark message as read
 router.put("/messages/:id/read", async (req, res) => {
@@ -304,13 +337,14 @@ router.post("/send-order-notification", async (req, res) => {
        FROM orders o
        JOIN order_line_items oli ON oli.order_id = o.id
        JOIN products p ON p.id = oli.product_id
-       WHERE o.id = $1 AND o.shop_domain = (SELECT shop_domain FROM shops WHERE id = $2)
+       WHERE o.id = $1 AND o.shop_domain = (SELECT shop_domain FROM users WHERE id = $2)
        GROUP BY o.id`,
       [orderId, shopId]
     );
 
     if (orderData.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Order not found",
       });
@@ -334,12 +368,13 @@ router.post("/send-order-notification", async (req, res) => {
 
     // Get store owner user
     const storeOwner = await db.query(
-      "SELECT * FROM users WHERE shop_id = $1 AND user_type = 'store_owner' LIMIT 1",
+      "SELECT * FROM users WHERE shop_domain = $1 AND user_type = 'store_owner' LIMIT 1",
       [shopId]
     );
 
     if (storeOwner.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "Store owner not found",
       });
@@ -352,7 +387,7 @@ router.post("/send-order-notification", async (req, res) => {
         const vendorUser = await db.query(
           `SELECT u.* FROM users u 
            JOIN vendors v ON v.email = u.email 
-           WHERE v.name = $1 AND v.shop_domain = (SELECT shop_domain FROM shops WHERE id = $2)
+           WHERE v.name = $1 AND v.shop_domain = (SELECT shop_domain FROM users WHERE id = $2)
            AND u.user_type = 'vendor'`,
           [vendorName, shopId]
         );

@@ -12,13 +12,14 @@ router.get("/profile", async (req, res) => {
     // Get user profile
     const userResult = await db.query(
       `SELECT id, username, email, user_type, phone, avatar_url, 
-              created_at, last_login, is_active, is_verified, shop_id
+              created_at, last_login, is_active, is_verified, shop_domain
        FROM users WHERE id = $1`,
       [userId]
     );
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({
+        status: 404,
         success: false,
         error: "User not found",
       });

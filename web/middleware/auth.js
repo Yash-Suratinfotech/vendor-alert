@@ -8,6 +8,7 @@ export const authenticateUser = async (req, res, next) => {
     const authHeader = req.headers?.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
+        status: 401,
         success: false,
         error: 'No token provided'
       });
@@ -26,6 +27,7 @@ export const authenticateUser = async (req, res, next) => {
 
     if (userResult.rows.length === 0) {
       return res.status(401).json({
+        status: 401,
         success: false,
         error: 'User not found'
       });
@@ -36,6 +38,7 @@ export const authenticateUser = async (req, res, next) => {
     // Check if user is active
     if (!user.is_active) {
       return res.status(401).json({
+        status: 401,
         success: false,
         error: 'Account is deactivated'
       });
@@ -44,6 +47,7 @@ export const authenticateUser = async (req, res, next) => {
     // Check if user is verified
     if (!user.is_verified) {
       return res.status(401).json({
+        status: 401,
         success: false,
         error: 'Please verify your email first'
       });
@@ -55,6 +59,7 @@ export const authenticateUser = async (req, res, next) => {
   } catch (error) {
     console.error('❌ Authentication error:', error);
     return res.status(401).json({
+      status: 401,
       success: false,
       error: error.message || 'Invalid or expired token'
     });
@@ -65,6 +70,7 @@ export const authenticateUser = async (req, res, next) => {
 export const requireVendor = (req, res, next) => {
   if (req.user.user_type !== 'vendor') {
     return res.status(403).json({
+      status: 403,
       success: false,
       error: 'Access denied. Vendor only.'
     });
@@ -75,6 +81,7 @@ export const requireVendor = (req, res, next) => {
 export const requireStoreOwner = (req, res, next) => {
   if (req.user.user_type !== 'store_owner') {
     return res.status(403).json({
+      status: 403,
       success: false,
       error: 'Access denied. Store owner only.'
     });
