@@ -24,8 +24,6 @@ import { useQuery } from "react-query";
 import { ViewIcon } from "@shopify/polaris-icons";
 
 export default function OrdersPage() {
-  const [financialStatusFilter, setFinancialStatusFilter] = useState("");
-  const [fulfillmentStatusFilter, setFulfillmentStatusFilter] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -40,23 +38,11 @@ export default function OrdersPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: [
-      "orders",
-      financialStatusFilter,
-      fulfillmentStatusFilter,
-      vendorFilter,
-      currentPage,
-    ],
+    queryKey: ["orders", vendorFilter, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage,
         limit: itemsPerPage,
-        ...(financialStatusFilter && {
-          financial_status: financialStatusFilter,
-        }),
-        ...(fulfillmentStatusFilter && {
-          fulfillment_status: fulfillmentStatusFilter,
-        }),
         ...(vendorFilter && { vendor: vendorFilter }),
       });
 
@@ -70,13 +56,6 @@ export default function OrdersPage() {
       }
 
       const data = await response.json();
-      console.log("📊 Orders API response:", {
-        ordersCount: data.orders?.length || 0,
-        totalFromPagination: data.pagination?.total || 0,
-        hasOrders: !!data.orders,
-        sampleOrder: data.orders?.[0],
-      });
-
       return data;
     },
     refetchOnWindowFocus: false,
@@ -96,39 +75,12 @@ export default function OrdersPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Fetch order details
-  const { data: orderDetails, isLoading: isLoadingDetails } = useQuery({
-    queryKey: ["order-details", selectedOrder?.id],
-    queryFn: async () => {
-      if (!selectedOrder?.id) return null;
-      const response = await fetch(`/api/orders/${selectedOrder.id}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch order details");
-      }
-      return await response.json();
-    },
-    enabled: !!selectedOrder?.id,
-    refetchOnWindowFocus: false,
-  });
-
-  const handleFinancialStatusChange = useCallback((value) => {
-    setFinancialStatusFilter(value);
-    setCurrentPage(1);
-  }, []);
-
-  const handleFulfillmentStatusChange = useCallback((value) => {
-    setFulfillmentStatusFilter(value);
-    setCurrentPage(1);
-  }, []);
-
   const handleVendorFilterChange = useCallback((value) => {
     setVendorFilter(value);
     setCurrentPage(1);
   }, []);
 
   const handleFiltersRemove = useCallback(() => {
-    setFinancialStatusFilter("");
-    setFulfillmentStatusFilter("");
     setVendorFilter("");
     setCurrentPage(1);
   }, []);
@@ -138,55 +90,12 @@ export default function OrdersPage() {
     setIsOrderModalOpen(true);
   }, []);
 
-  const getFinancialStatusBadge = (status) => {
-    const statusMap = {
-      paid: { progress: "complete", children: "Paid" },
-      pending: { progress: "incomplete", tone: "warning", children: "Pending" },
-      refunded: { tone: "critical", children: "Refunded" },
-      partially_refunded: { tone: "warning", children: "Partially Refunded" },
-      voided: { tone: "critical", children: "Voided" },
-      authorized: { tone: "info", children: "Authorized" },
-      partially_paid: { tone: "warning", children: "Partially Paid" },
-    };
-    return (
-      <Badge {...(statusMap[status] || { children: status || "Unknown" })} />
-    );
-  };
-
-  const getFulfillmentStatusBadge = (status) => {
-    const statusMap = {
-      fulfilled: { progress: "complete", children: "Fulfilled" },
-      partially_fulfilled: {
-        progress: "incomplete",
-        tone: "warning",
-        children: "Partially Fulfilled",
-      },
-      unfulfilled: {
-        progress: "incomplete",
-        tone: "attention",
-        children: "Unfulfilled",
-      },
-      restocked: { tone: "info", children: "Restocked" },
-      null: { tone: "attention", children: "Unfulfilled" },
-      undefined: { tone: "attention", children: "Unfulfilled" },
-    };
-    return (
-      <Badge
-        {...(statusMap[status] ||
-          statusMap[status === null ? "null" : "unfulfilled"])}
-      />
-    );
-  };
-
   // Enhanced table data preparation
   const tableData =
     ordersData?.orders?.map((order) => [
       <Text variant="bodyMd" fontWeight="semibold">
         {order.name}
       </Text>,
-      `$${parseFloat(order.total_price || 0).toFixed(2)}`,
-      getFinancialStatusBadge(order.financial_status),
-      getFulfillmentStatusBadge(order.fulfillment_status),
       order.notified ? (
         <Badge tone="success">Notified</Badge>
       ) : (
@@ -204,15 +113,7 @@ export default function OrdersPage() {
       </Button>,
     ]) || [];
 
-  const tableHeaders = [
-    "Order Number",
-    "Total",
-    "Payment",
-    "Fulfillment",
-    "Notification",
-    "Date",
-    "Actions",
-  ];
+  const tableHeaders = ["Order Number", "Notification", "Date", "Actions"];
 
   // Filter options
   const vendorOptions = [
@@ -223,38 +124,7 @@ export default function OrdersPage() {
     })) || []),
   ];
 
-  const financialStatusOptions = [
-    { label: "All payment statuses", value: "" },
-    { label: "Paid", value: "paid" },
-    { label: "Pending", value: "pending" },
-    { label: "Authorized", value: "authorized" },
-    { label: "Partially Paid", value: "partially_paid" },
-    { label: "Refunded", value: "refunded" },
-    { label: "Partially Refunded", value: "partially_refunded" },
-    { label: "Voided", value: "voided" },
-  ];
-
-  const fulfillmentStatusOptions = [
-    { label: "All fulfillment statuses", value: "" },
-    { label: "Fulfilled", value: "fulfilled" },
-    { label: "Partial", value: "partial" },
-    { label: "Unfulfilled", value: "unfulfilled" },
-    { label: "Restocked", value: "restocked" },
-  ];
-
   const appliedFilters = [];
-  if (financialStatusFilter)
-    appliedFilters.push({
-      key: "financial_status",
-      label: `Payment: ${financialStatusFilter}`,
-      onRemove: () => setFinancialStatusFilter(""),
-    });
-  if (fulfillmentStatusFilter)
-    appliedFilters.push({
-      key: "fulfillment_status",
-      label: `Fulfillment: ${fulfillmentStatusFilter}`,
-      onRemove: () => setFulfillmentStatusFilter(""),
-    });
   if (vendorFilter)
     appliedFilters.push({
       key: "vendor",
@@ -265,32 +135,6 @@ export default function OrdersPage() {
   const filters = (
     <Filters
       filters={[
-        {
-          key: "financial_status",
-          label: "Payment Status",
-          filter: (
-            <Select
-              label="Payment Status"
-              labelHidden
-              options={financialStatusOptions}
-              value={financialStatusFilter}
-              onChange={handleFinancialStatusChange}
-            />
-          ),
-        },
-        {
-          key: "fulfillment_status",
-          label: "Fulfillment Status",
-          filter: (
-            <Select
-              label="Fulfillment Status"
-              labelHidden
-              options={fulfillmentStatusOptions}
-              value={fulfillmentStatusFilter}
-              onChange={handleFulfillmentStatusChange}
-            />
-          ),
-        },
         {
           key: "vendor",
           label: "Vendor",
@@ -420,15 +264,7 @@ export default function OrdersPage() {
               ) : (
                 <>
                   <DataTable
-                    columnContentTypes={[
-                      "text",
-                      "numeric",
-                      "text",
-                      "text",
-                      "text",
-                      "text",
-                      "text",
-                    ]}
+                    columnContentTypes={["text", "text", "text", "text"]}
                     headings={tableHeaders}
                     rows={tableData}
                     hoverable
@@ -472,20 +308,6 @@ export default function OrdersPage() {
               <Card>
                 <BlockStack gap="400">
                   <Text variant="headingMd">Order Summary</Text>
-
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {
-                        ordersData.orders.filter(
-                          (o) => o.financial_status === "paid"
-                        ).length
-                      }
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      Paid Orders
-                    </Text>
-                  </div>
-
                   <div>
                     <Text variant="headingLg" as="h3">
                       {ordersData.orders.filter((o) => o.notified).length}
@@ -520,11 +342,7 @@ export default function OrdersPage() {
           ]}
         >
           <Modal.Section>
-            {isLoadingDetails ? (
-              <div style={{ textAlign: "center", padding: "2rem" }}>
-                <Spinner size="large" />
-              </div>
-            ) : orderDetails ? (
+            {selectedOrder ? (
               <Layout>
                 <Layout.Section oneHalf>
                   <Card title="Order Information">
@@ -533,40 +351,13 @@ export default function OrdersPage() {
                         <Text variant="bodyMd" fontWeight="medium">
                           Order ID:
                         </Text>
-                        <Text>{orderDetails.order.name}</Text>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text variant="bodyMd" fontWeight="medium">
-                          Total:
-                        </Text>
-                        <Text>
-                          $
-                          {parseFloat(
-                            orderDetails.order.total_price || 0
-                          ).toFixed(2)}
-                        </Text>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text variant="bodyMd" fontWeight="medium">
-                          Payment:
-                        </Text>
-                        {getFinancialStatusBadge(
-                          orderDetails.order.financial_status
-                        )}
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text variant="bodyMd" fontWeight="medium">
-                          Fulfillment:
-                        </Text>
-                        {getFulfillmentStatusBadge(
-                          orderDetails.order.fulfillment_status
-                        )}
+                        <Text>{selectedOrder.name}</Text>
                       </InlineStack>
                       <InlineStack align="space-between">
                         <Text variant="bodyMd" fontWeight="medium">
                           Notification:
                         </Text>
-                        {orderDetails.order.notified ? (
+                        {selectedOrder.notified ? (
                           <Badge tone="success">Vendors Notified</Badge>
                         ) : (
                           <Badge tone="warning">Pending</Badge>
@@ -578,20 +369,20 @@ export default function OrdersPage() {
                         </Text>
                         <Text>
                           {new Date(
-                            orderDetails.order.shopify_created_at
+                            selectedOrder.shopify_created_at ||
+                              selectedOrder.createdAt
                           ).toLocaleString()}
                         </Text>
                       </InlineStack>
                     </BlockStack>
                   </Card>
                 </Layout.Section>
-                {orderDetails}
                 <Layout.Section oneHalf>
                   <Card title="Line Items">
-                    {orderDetails.lineItems &&
-                    orderDetails.lineItems.length > 0 ? (
+                    {selectedOrder.lineItems &&
+                    selectedOrder.lineItems.length > 0 ? (
                       <List type="bullet">
-                        {orderDetails.lineItems.map((item, index) => (
+                        {selectedOrder.lineItems.map((item, index) => (
                           <List.Item key={index}>
                             <BlockStack gap="200">
                               <Text variant="bodyMd" fontWeight="medium">
@@ -605,7 +396,14 @@ export default function OrdersPage() {
                                   Qty: {item.quantity}
                                 </Text>
                                 <Text variant="bodySm" tone="subdued">
-                                  ${parseFloat(item.price || 0).toFixed(2)}
+                                  Notification:{"  "}
+                                  {item.notification ? (
+                                    <Badge tone="success">
+                                      Vendors Notified
+                                    </Badge>
+                                  ) : (
+                                    <Badge tone="warning">Pending</Badge>
+                                  )}
                                 </Text>
                               </InlineStack>
                             </BlockStack>
@@ -620,10 +418,10 @@ export default function OrdersPage() {
               </Layout>
             ) : (
               <EmptyState
-                heading="Failed to load order details"
+                heading="No order selected"
                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
               >
-                <p>There was an error loading the order details.</p>
+                <p>Select an order from the table to view its details.</p>
               </EmptyState>
             )}
           </Modal.Section>

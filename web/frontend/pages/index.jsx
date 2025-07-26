@@ -21,8 +21,6 @@ import {
 } from "@shopify/polaris-icons";
 
 export default function HomePage() {
-  // fetch("/api/notify-orders")
-
   // Fetch sync status
   const { data: syncStatus, isLoading: isLoadingSync } = useQuery({
     queryKey: ["sync-status"],

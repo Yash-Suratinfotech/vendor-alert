@@ -10,16 +10,15 @@ router.get("/", async (req, res) => {
     const session = res.locals.shopify.session;
     const shopDomain = session.shop;
 
-    // Parse query parameters
+    // Pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 25;
     const offset = (page - 1) * limit;
 
     // Filters
     const vendor = req.query.vendor;
-    const notification = req.query.notification; // 'true', 'false', or undefined
+    const notification = req.query.notification;
 
-    // Build WHERE conditions - FIXED parameter counting
     let whereConditions = ["o.shop_domain = $1"];
     let queryParams = [shopDomain];
     let paramCount = 1;
@@ -38,49 +37,40 @@ router.get("/", async (req, res) => {
 
     if (notification !== undefined) {
       paramCount++;
-      whereConditions.push(`o.notification = $${paramCount}`); // FIXED: Added $ sign
+      whereConditions.push(`o.notification = $${paramCount}`);
       queryParams.push(notification === "true");
     }
 
     const whereClause = whereConditions.join(" AND ");
 
-    // Get total count
-    const totalCountQuery = `
-      SELECT COUNT(*) as total
-      FROM orders o 
-      WHERE ${whereClause}
-    `;
-
-    const totalResult = await db.query(totalCountQuery, queryParams);
+    // Total count
+    const totalResult = await db.query(
+      `SELECT COUNT(*) as total FROM orders o WHERE ${whereClause}`,
+      queryParams
+    );
     const total = parseInt(totalResult.rows[0].total);
 
-    // FIXED: Proper parameter handling for LIMIT and OFFSET
+    // Orders with enriched line items
     const nextParamCount = paramCount + 1;
     const offsetParamCount = paramCount + 2;
 
-    // Get orders with line items
     const ordersQuery = `
       SELECT 
-        o.id,
-        o.shopify_order_id,
-        o.name,
-        o.notification,
-        o.created_at,
-        o.updated_at,
-        o.shopify_created_at,
-        o.shopify_updated_at,
+        o.*,
         json_agg(
           json_build_object(
             'id', oli.id,
             'productId', oli.product_id,
             'quantity', oli.quantity,
             'notification', oli.notification,
-            'productTitle', p.title,
-            'productImage', p.image,
-            'vendorName', p.vendor_name
+            'title', p.title,
+            'image', p.image,
+            'vendor', p.vendor_name,
+            'vendorId', p.vendor_id,
+            'shopifyProductId', p.shopify_product_id
           ) ORDER BY oli.id
-        ) as line_items
-      FROM orders o 
+        ) FILTER (WHERE oli.id IS NOT NULL) as line_items
+      FROM orders o
       LEFT JOIN order_line_items oli ON oli.order_id = o.id
       LEFT JOIN products p ON p.id = oli.product_id
       WHERE ${whereClause}
@@ -89,9 +79,7 @@ router.get("/", async (req, res) => {
       LIMIT $${nextParamCount} OFFSET $${offsetParamCount}
     `;
 
-    // FIXED: Proper parameter array
     const finalParams = [...queryParams, limit, offset];
-
     const ordersResult = await db.query(ordersQuery, finalParams);
 
     const orders = ordersResult.rows.map((order) => ({
@@ -106,24 +94,20 @@ router.get("/", async (req, res) => {
       shopifyUpdatedAt: order.shopify_updated_at,
     }));
 
-    // Calculate pagination
-    const totalPages = Math.ceil(total / limit);
-
     res.json({
       success: true,
       orders,
       pagination: {
         total,
         page,
-        totalPages,
-        hasNextPage: page < totalPages,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
         hasPreviousPage: page > 1,
       },
     });
   } catch (error) {
     console.error("❌ Error fetching orders:", error);
     res.status(500).json({
-      status: 500,
       success: false,
       error: "Failed to fetch orders",
       details: error.message,
@@ -131,7 +115,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/orders/:id - Get single order details
+// GET /api/orders/:id - Get single order details with full line item info
 router.get("/:id", async (req, res) => {
   try {
     const session = res.locals.shopify.session;
@@ -149,12 +133,13 @@ router.get("/:id", async (req, res) => {
             'productId', oli.product_id,
             'quantity', oli.quantity,
             'notification', oli.notification,
-            'productTitle', p.title,
-            'productImage', p.image,
-            'vendorName', p.vendor_name,
+            'title', p.title,
+            'image', p.image,
+            'vendor', p.vendor_name,
+            'vendorId', p.vendor_id,
             'shopifyProductId', p.shopify_product_id
           ) ORDER BY oli.id
-        ) as line_items
+        ) FILTER (WHERE oli.id IS NOT NULL) as line_items
       FROM orders o 
       LEFT JOIN order_line_items oli ON oli.order_id = o.id
       LEFT JOIN products p ON p.id = oli.product_id
@@ -300,5 +285,46 @@ router.put(
     }
   }
 );
+
+// POST /api/orders/notify-vendors/orderId - Manually notify vendors for an order
+router.post("/notify-vendors/:orderId", async (req, res) => {
+  try {
+    const session = res.locals.shopify.session;
+    const shopDomain = session.shop;
+    const orderId = req.params.orderId;
+
+    // Trigger notification through notify-orders API
+    const response = await fetch(
+      `${process.env.BACKEND_URL}/api/notify-orders`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopDomain, orderId }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (response.ok) {
+      res.json({
+        success: true,
+        message: "Vendors notified successfully",
+        results: result.notified,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error || "Failed to notify vendors",
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error notifying vendors:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to notify vendors",
+      details: error.message,
+    });
+  }
+});
 
 export default router;

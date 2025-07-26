@@ -116,6 +116,10 @@ export default function VendorsPage() {
     getUserToken();
   }, [getUserToken]);
 
+  // useEffect(() => {
+  //   fetch("/api/notify-orders");
+  // }, []);
+
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value);
     setCurrentPage(1);
@@ -339,7 +343,7 @@ export default function VendorsPage() {
                     onClick={() => {
                       if (token) {
                         window.open(
-                          `http://localhost:3000/login?token=${token}`,
+                          `http://localhost:3000/verify-user?token=${token}`,
                           "_blank"
                         );
                       } else {

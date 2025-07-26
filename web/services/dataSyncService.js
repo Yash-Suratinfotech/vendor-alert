@@ -1,7 +1,7 @@
 // web/services/dataSyncService.js - Updated for Order-Based Products Only
 import shopify from "../shopify.js";
 import db from "../db.js";
-
+import { generateToken } from "../utils/jwt.js";
 class DataSyncService {
   constructor() {
     this.BATCH_SIZE = 50;
@@ -42,23 +42,28 @@ class DataSyncService {
         [session.shop]
       );
 
-      let userId;
-
       if (existingUser.rows.length === 0) {
         // Insert new store_owner
         const newUser = await client.query(
           `INSERT INTO users 
-          (username, email, user_type, shop_domain, access_token, is_verified, is_active)
-          VALUES ($1, $2, 'store_owner', $3, $4, true, true)
+          (username, email, user_type, shop_domain, is_verified, is_active)
+          VALUES ($1, $2, 'store_owner', $3, true, true)
           RETURNING id`,
-          [
-            shopData.shopOwnerName || shopData.name,
-            session.shop,
-            session.shop,
-            session.accessToken,
-          ]
+          [shopData.shopOwnerName || shopData.name, session.shop, session.shop]
         );
-        userId = newUser.rows[0].id;
+        const userId = newUser.rows[0].id;
+
+        // Generate token (for by pass email)
+        const token = generateToken(userId, session.shop, "store_owner");
+
+        // Update user as verified (for by pass email)
+        await client.query(
+          `UPDATE users 
+          SET access_token = $2 
+          WHERE id = $1`,
+          [userId, token]
+        );
+
         console.log("🆕 New store_owner user created:", shopData.email);
         console.log("🚀 Starting initial data sync for:", session.shop);
 
@@ -99,7 +104,8 @@ class DataSyncService {
               const vendorName = edge.node.vendor?.trim();
               if (vendorName && !seenVendors.has(vendorName)) {
                 seenVendors.add(vendorName);
-                await client.query(`
+                await client.query(
+                  `
                   INSERT INTO vendors (name, contact_person, mobile, shop_domain)
                   VALUES ($1, '', '', $2)
                   ON CONFLICT (name, shop_domain) DO NOTHING
@@ -127,16 +133,6 @@ class DataSyncService {
         this.performInitialSync(session).catch((error) => {
           console.error("❌ Initial sync failed:", error);
         });
-      } else {
-        // Update existing store_owner
-        userId = existingUser.rows[0].id;
-        await client.query(
-          `UPDATE users 
-          SET access_token = $1, updated_at = NOW()
-          WHERE id = $2`,
-          [session.accessToken, userId]
-        );
-        console.log("🔄 Existing store_owner updated:", shopData.email);
       }
 
       await client.query("COMMIT");

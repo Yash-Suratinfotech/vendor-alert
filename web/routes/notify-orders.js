@@ -4,11 +4,11 @@ import db from "../db.js";
 
 const router = express.Router();
 
-// POST /api/notify-orders - Get orders for notify orders
-router.post("/", async (req, res) => {
-  console.log("✌️ call notify orders api --->");
+// GET /api/notify-orders - Get orders for notify orders
+router.get("/", async (req, res) => {
   try {
-    const { shopDomain } = req.body;
+    const session = res.locals.shopify.session;
+    const shopDomain = session.shop;
 
     if (!shopDomain) {
       return res

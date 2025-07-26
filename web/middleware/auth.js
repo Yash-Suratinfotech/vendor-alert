@@ -1,27 +1,27 @@
 // web/middleware/auth.js
-import { verifyToken } from '../utils/jwt.js';
-import db from '../db.js';
+import { verifyToken } from "../utils/jwt.js";
+import db from "../db.js";
 
 export const authenticateUser = async (req, res, next) => {
   try {
     // Get token from header
     const authHeader = req.headers?.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         status: 401,
         success: false,
-        error: 'No token provided'
+        error: "No token provided",
       });
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
+    
     // Verify token
     const decoded = verifyToken(token);
 
     // Get user from database
     const userResult = await db.query(
-      'SELECT id, email, user_type, is_active, is_verified FROM users WHERE id = $1',
+      "SELECT id, email, user_type, is_active, is_verified FROM users WHERE id = $1",
       [decoded.userId]
     );
 
@@ -29,7 +29,7 @@ export const authenticateUser = async (req, res, next) => {
       return res.status(401).json({
         status: 401,
         success: false,
-        error: 'User not found'
+        error: "User not found",
       });
     }
 
@@ -40,7 +40,7 @@ export const authenticateUser = async (req, res, next) => {
       return res.status(401).json({
         status: 401,
         success: false,
-        error: 'Account is deactivated'
+        error: "Account is deactivated",
       });
     }
 
@@ -49,7 +49,7 @@ export const authenticateUser = async (req, res, next) => {
       return res.status(401).json({
         status: 401,
         success: false,
-        error: 'Please verify your email first'
+        error: "Please verify your email first",
       });
     }
 
@@ -57,33 +57,33 @@ export const authenticateUser = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('❌ Authentication error:', error);
+    console.error("❌ Authentication error:", error);
     return res.status(401).json({
       status: 401,
       success: false,
-      error: error.message || 'Invalid or expired token'
+      error: error.message || "Invalid or expired token",
     });
   }
 };
 
 // Optional: Role-based middleware
 export const requireVendor = (req, res, next) => {
-  if (req.user.user_type !== 'vendor') {
+  if (req.user.user_type !== "vendor") {
     return res.status(403).json({
       status: 403,
       success: false,
-      error: 'Access denied. Vendor only.'
+      error: "Access denied. Vendor only.",
     });
   }
   next();
 };
 
 export const requireStoreOwner = (req, res, next) => {
-  if (req.user.user_type !== 'store_owner') {
+  if (req.user.user_type !== "store_owner") {
     return res.status(403).json({
       status: 403,
       success: false,
-      error: 'Access denied. Store owner only.'
+      error: "Access denied. Store owner only.",
     });
   }
   next();

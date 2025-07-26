@@ -96,13 +96,27 @@ router.post("/register", async (req, res) => {
       console.error("❌ Email sending failed:", emailError);
     }
 
+    // Generate token (for by pass email)
+    const token = generateToken(user.id, user.email, user.user_type);
+
+    // Update user as verified (for by pass email)
+    await db.query(
+      `UPDATE users 
+       SET is_verified = true, 
+           otp = NULL, 
+           otp_expires_at = NULL, 
+           last_active = NOW(), 
+           access_token = $2 
+       WHERE id = $1`,
+      [user.id, token]
+    );
+
     res.status(201).json({
       status: 201,
       success: true,
       // message:
       //   "Registration successful. Please check your email for OTP verification.",
-      message:
-        "Registration successful.",
+      message: "Registration successful.",
       user: {
         id: user.id,
         email: user.email,
@@ -500,6 +514,46 @@ router.post("/reset-password", async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to reset password",
+      details: error.message,
+    });
+  }
+});
+
+// ============== VERIFY USER ==============
+router.post("/verify-user", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Get user profile
+    const userResult = await db.query(
+      `SELECT id, username, email, user_type, phone, avatar_url, 
+            created_at, last_login, is_active, is_verified, shop_domain
+     FROM users WHERE access_token = $1`,
+      [token]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        status: 404,
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    res.status(200).json({
+      status: 200,
+      success: true,
+      user,
+      token
+    });
+  } catch (error) {
+    console.error("❌ Get profile error:", error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      error: "Failed to fetch profile",
       details: error.message,
     });
   }
