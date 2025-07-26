@@ -9,7 +9,7 @@ const router = express.Router();
 // GET /chat/conversations - Get conversation list for current user
 router.get("/conversations", async (req, res) => {
   try {
-    const { userId, userType, shopId } = req.query;
+    const { userId, userType } = req.query;
 
     let conversations;
 
@@ -48,7 +48,7 @@ router.get("/conversations", async (req, res) => {
           u.email as contact_email,
           u.avatar_url as contact_avatar,
           'store_owner' as contact_type,
-          u.username as shop_name, -- Use store_owner's username as shop_name
+          u.username as shop_name,
           u.shop_domain,
           (SELECT content FROM messages 
            WHERE (sender_id = $1 AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = $1)
@@ -59,10 +59,9 @@ router.get("/conversations", async (req, res) => {
           (SELECT COUNT(*) FROM messages m
            JOIN message_recipients mr ON mr.message_id = m.id
            WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false) as unread_count
-         FROM users u
-         WHERE u.user_type = 'store_owner'
-           AND u.shop_domain = (SELECT shop_domain FROM users WHERE id = $1 AND user_type = 'vendor')
-         ORDER BY last_message_time DESC NULLS LAST`,
+          FROM vendors v
+          JOIN users u ON u.shop_domain = v.shop_domain AND u.user_type = 'store_owner'
+          WHERE v.email = (SELECT email FROM users WHERE id = $1)`,
         [userId]
       );
     }
@@ -81,7 +80,7 @@ router.get("/conversations", async (req, res) => {
 
     const formattedConversations = conversations.rows.map((conv) => ({
       contactId: conv.contact_id,
-      contactName: conv.contact_name || conv.vendor_name || conv.shop_name,
+      contactName: conv.vendor_name || conv.shop_name || conv.contact_name,
       contactEmail: conv.contact_email,
       contactAvatar: conv.contact_avatar,
       contactType: conv.contact_type,
@@ -286,7 +285,6 @@ router.post("/messages", async (req, res) => {
   }
 });
 
-
 // PUT /chat/messages/:id/read - Mark message as read
 router.put("/messages/:id/read", async (req, res) => {
   try {
@@ -319,7 +317,7 @@ router.put("/messages/:id/read", async (req, res) => {
 // POST /chat/send-order-notification - Send automated order notification
 router.post("/send-order-notification", async (req, res) => {
   try {
-    const { orderId, shopId } = req.body;
+    const { orderId, userId } = req.body;
 
     // Get order details with line items
     const orderData = await db.query(
@@ -339,7 +337,7 @@ router.post("/send-order-notification", async (req, res) => {
        JOIN products p ON p.id = oli.product_id
        WHERE o.id = $1 AND o.shop_domain = (SELECT shop_domain FROM users WHERE id = $2)
        GROUP BY o.id`,
-      [orderId, shopId]
+      [orderId, userId]
     );
 
     if (orderData.rows.length === 0) {
@@ -369,7 +367,7 @@ router.post("/send-order-notification", async (req, res) => {
     // Get store owner user
     const storeOwner = await db.query(
       "SELECT * FROM users WHERE shop_domain = $1 AND user_type = 'store_owner' LIMIT 1",
-      [shopId]
+      [userId]
     );
 
     if (storeOwner.rows.length === 0) {
@@ -389,7 +387,7 @@ router.post("/send-order-notification", async (req, res) => {
            JOIN vendors v ON v.email = u.email 
            WHERE v.name = $1 AND v.shop_domain = (SELECT shop_domain FROM users WHERE id = $2)
            AND u.user_type = 'vendor'`,
-          [vendorName, shopId]
+          [vendorName, userId]
         );
 
         if (vendorUser.rows.length === 0) {
@@ -529,14 +527,5 @@ router.post("/vendor-response", async (req, res) => {
     });
   }
 });
-
-// Utility function to get a random gradient from the last two gradients used in the codebase
-function getRandomGradient() {
-  const gradients = [
-    "linear-gradient(135deg, #74b9ff, #0984e3)",
-    "linear-gradient(135deg, #ff6b6b, #ee5a24)",
-  ];
-  return gradients[Math.floor(Math.random() * gradients.length)];
-}
 
 export default router;

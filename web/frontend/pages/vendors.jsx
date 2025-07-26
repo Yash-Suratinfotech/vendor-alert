@@ -19,10 +19,11 @@ import {
   Frame,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
 
 export default function VendorsPage() {
+  const [token, setToken] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedVendor, setSelectedVendor] = useState(null);
@@ -92,6 +93,28 @@ export default function VendorsPage() {
       setShowToast(true);
     },
   });
+
+  const getUserToken = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/token");
+      if (response.ok) {
+        const data = await response.json();
+        setToken(data.token);
+      } else {
+        const errorData = await response.json();
+        setToastMessage(`Error: ${errorData.error || "Failed to fetch token"}`);
+        setShowToast(true);
+      }
+    } catch (error) {
+      console.error("Failed to fetch token:", error);
+      setToastMessage("Failed to fetch token.");
+      setShowToast(true);
+    }
+  }, [fetch, showToast]);
+
+  useEffect(() => {
+    getUserToken();
+  }, [getUserToken]);
 
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value);
@@ -303,6 +326,31 @@ export default function VendorsPage() {
                   )}
                 </>
               )}
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section variant="oneThird">
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd">Vendor chats box</Text>
+                <div>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      if (token) {
+                        window.open(
+                          `http://localhost:3000/login?token=${token}`,
+                          "_blank"
+                        );
+                      } else {
+                        alert("Missing token");
+                      }
+                    }}
+                  >
+                    Go to chats
+                  </Button>
+                </div>
+              </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>

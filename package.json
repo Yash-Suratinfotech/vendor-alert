@@ -11,9 +11,6 @@
     "generate": "shopify app generate",
     "deploy": "shopify app deploy"
   },
-  "dependencies": {
-    "cors": "^2.8.5"
-  },
   "author": "Yash Borda",
   "private": true,
   "workspaces": [

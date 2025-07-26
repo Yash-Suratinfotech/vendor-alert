@@ -32,6 +32,8 @@ try {
       avatar_url TEXT,
       shop_domain VARCHAR(50) UNIQUE, -- Only for store_owner type
       user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
+      notify_mode VARCHAR(20) CHECK (notify_mode IN ('every_x_hours', 'specific_time')) DEFAULT 'specific_time',
+      notify_value VARCHAR(10) DEFAULT '10 AM',
       initial_sync_completed BOOLEAN DEFAULT FALSE,
       otp VARCHAR(6),
       otp_expires_at TIMESTAMP,
@@ -119,8 +121,8 @@ try {
     -- 💬 Messages Table - Direct messaging between users
     CREATE TABLE messages (
       id SERIAL PRIMARY KEY,
-      sender_id INTEGER NOT NULL REFERENCES users(id),
-      receiver_id INTEGER NOT NULL REFERENCES users(id),
+      sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       content TEXT NOT NULL,
       message_type VARCHAR(20) DEFAULT 'text' CHECK (message_type IN ('text', 'file', 'order_notification')),
       file_url VARCHAR(500) DEFAULT NULL,
@@ -134,7 +136,7 @@ try {
     -- 📩 Message Recipients Table - Track delivery and acceptance
     CREATE TABLE message_recipients (
       id SERIAL PRIMARY KEY,
-      message_id INTEGER NOT NULL REFERENCES messages(id),
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
       is_accept BOOLEAN DEFAULT NULL, -- For order_notification messages: true=accept, false=decline, null=pending
       delivery_status VARCHAR(20) DEFAULT 'sent' CHECK (delivery_status IN ('sent', 'delivered', 'read', 'failed')),
       sent_at TIMESTAMP DEFAULT NOW(),

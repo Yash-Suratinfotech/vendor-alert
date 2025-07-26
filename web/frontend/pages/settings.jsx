@@ -12,13 +12,11 @@ import {
   Toast,
   Frame,
   Text,
+  Select,
 } from "@shopify/polaris";
 import React, { useState, useCallback, useEffect } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
 
 function SettingsPage() {
-  const app = useAppBridge();
-
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -32,6 +30,10 @@ function SettingsPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState(null);
+  const [notifyMode, setNotifyMode] = useState("");
+  const [notifyValue, setNotifyValue] = useState("");
+  const [notifyValueHour, setNotifyValueHour] = useState("");
+  const [notifyValuePeriod, setNotifyValuePeriod] = useState("");
 
   const toggleToastActive = useCallback(
     () => setToastActive((active) => !active),
@@ -54,6 +56,17 @@ function SettingsPage() {
         setUsername(data.user.username || "");
         setPhone(data.user.phone || "");
         setAvatarUrl(data.user.avatar_url || "");
+        setNotifyMode(data.user.notify_mode || "");
+        if (
+          data.user.notify_mode === "specific_time" &&
+          data.user.notify_value
+        ) {
+          const [hour, period] = data.user.notify_value.split(" ");
+          setNotifyValueHour(hour || "");
+          setNotifyValuePeriod(period || "");
+        } else {
+          setNotifyValue(data.user.notify_value || "");
+        }
       } else {
         const errorData = await response.json();
         showToast(
@@ -80,6 +93,11 @@ function SettingsPage() {
     }
     setPasswordError(null);
 
+    let finalNotifyValue =
+      notifyMode === "specific_time"
+        ? `${notifyValueHour} ${notifyValuePeriod}`
+        : notifyValue;
+
     setSubmitting(true);
     try {
       const response = await fetch("/api/settings/profile", {
@@ -91,6 +109,8 @@ function SettingsPage() {
           username,
           phone,
           avatar_url: avatarUrl,
+          notify_mode: notifyMode,
+          notify_value: finalNotifyValue,
           ...(password && { password }), // Only send password if it's not empty
         }),
       });
@@ -182,6 +202,68 @@ function SettingsPage() {
                   <BlockStack distribution="trailing">
                     <Button submit primary loading={submitting}>
                       Save
+                    </Button>
+                  </BlockStack>
+                </FormLayout>
+              </Form>
+            </Card>
+          </Layout.AnnotatedSection>
+
+          <Layout.AnnotatedSection
+            title="Notification Settings"
+            description="Choose when your suppliers get notified."
+          >
+            <Card sectioned>
+              <Form onSubmit={handleSave}>
+                <FormLayout>
+                  <Select
+                    label="Notification Mode"
+                    options={[
+                      { label: "Every X hours", value: "every_x_hours" },
+                      { label: "At specific time", value: "specific_time" },
+                    ]}
+                    value={notifyMode}
+                    onChange={setNotifyMode}
+                  />
+                  {notifyMode === "every_x_hours" && (
+                    <TextField
+                      label="Notify every X hours"
+                      value={notifyValue}
+                      onChange={setNotifyValue}
+                      type="number"
+                      autoComplete="off"
+                    />
+                  )}
+                  {notifyMode === "specific_time" && (
+                    <FormLayout.Group condensed>
+                      <Select
+                        id="hour-select"
+                        label="Daily Hour (e.g., 10)"
+                        placeholder="Select hour"
+                        options={Array.from({ length: 12 }, (_, i) => ({
+                          label: `${i + 1}`,
+                          value: `${i + 1}`,
+                        }))}
+                        value={notifyValueHour}
+                        onChange={setNotifyValueHour}
+                      />
+                      <Select
+                        id="period-select"
+                        label="Daily Period (e.g. PM)"
+                        placeholder="Select Period"
+                        options={[
+                          { label: "AM", value: "AM" },
+                          { label: "PM", value: "PM" },
+                        ]}
+                        value={notifyValuePeriod}
+                        onChange={setNotifyValuePeriod}
+                      />
+                    </FormLayout.Group>
+                  )}
+
+                  <BlockStack distribution="trailing">
+                    <Button submit primary loading={submitting}>
+                      Save Notification Setting
                     </Button>
                   </BlockStack>
                 </FormLayout>

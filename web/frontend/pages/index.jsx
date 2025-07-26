@@ -21,27 +21,17 @@ import {
 } from "@shopify/polaris-icons";
 
 export default function HomePage() {
+  // fetch("/api/notify-orders")
+
   // Fetch sync status
   const { data: syncStatus, isLoading: isLoadingSync } = useQuery({
     queryKey: ["sync-status"],
     queryFn: async () => {
-      const response = await fetch("/api/sync/status");
+      const response = await fetch("/api/settings/status");
       return await response.json();
     },
     refetchOnWindowFocus: false,
   });
-
-  // Fetch basic stats
-  const { data: vendorsData, isLoading: isLoadingVendors } = useQuery({
-    queryKey: ["vendors"],
-    queryFn: async () => {
-      const response = await fetch("/api/vendor/list");
-      return await response.json();
-    },
-    refetchOnWindowFocus: false,
-  });
-
-  const isLoading = isLoadingSync || isLoadingVendors;
 
   const getInitialSyncStatus = () => {
     if (isLoadingSync) return null;

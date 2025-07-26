@@ -66,29 +66,26 @@ router.post("/register", async (req, res) => {
       `INSERT INTO users (
         username, email, password_hash, user_type, 
         otp, otp_expires_at, is_active, is_verified
-      ) VALUES ($1, $2, $3, 'vendor', $4, $5, true, false)
+      ) VALUES ($1, $2, $3, 'vendor', $4, $5, true, true)
       RETURNING id, username, email, user_type`,
       [username, email.toLowerCase(), hashedPassword, otp, otpExpiresAt]
     );
 
     const user = userResult.rows[0];
 
-    // If vendor, check if they exist in vendors table
-    if (userType === "vendor") {
-      const vendorCheck = await client.query(
-        "SELECT * FROM vendors WHERE email = $1",
-        [email.toLowerCase()]
-      );
+    // const vendorCheck = await client.query(
+    //   "SELECT * FROM vendors WHERE email = $1",
+    //   [email.toLowerCase()]
+    // );
 
-      if (vendorCheck.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          success: false,
-          error:
-            "Vendor not found. Please contact store owner to add you as a vendor.",
-        });
-      }
-    }
+    // if (vendorCheck.rows.length === 0) {
+    //   await client.query("ROLLBACK");
+    //   return res.status(404).json({
+    //     success: false,
+    //     error:
+    //       "Vendor not found. Please contact store owner to add you as a vendor.",
+    //   });
+    // }
 
     await client.query("COMMIT");
 
@@ -100,13 +97,16 @@ router.post("/register", async (req, res) => {
     }
 
     res.status(201).json({
+      status: 201,
       success: true,
+      // message:
+      //   "Registration successful. Please check your email for OTP verification.",
       message:
-        "Registration successful. Please check your email for OTP verification.",
+        "Registration successful.",
       user: {
         id: user.id,
         email: user.email,
-        userType: user.user_type,
+        userType: "vendor",
       },
     });
   } catch (error) {

@@ -28,12 +28,14 @@ router.get("/profile", async (req, res) => {
     const user = userResult.rows[0];
 
     res.status(200).json({
+      status: 200,
       success: true,
       user,
     });
   } catch (error) {
     console.error("❌ Get profile error:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to fetch profile",
       details: error.message,
@@ -71,6 +73,7 @@ router.put("/profile", async (req, res) => {
 
     if (updates.length === 0) {
       return res.status(400).json({
+        status: 400,
         success: false,
         error: "No fields to update",
       });
@@ -89,6 +92,7 @@ router.put("/profile", async (req, res) => {
     const result = await db.query(query, values);
 
     res.status(200).json({
+      status: 200,
       success: true,
       message: "Profile updated successfully",
       user: result.rows[0],
@@ -96,6 +100,7 @@ router.put("/profile", async (req, res) => {
   } catch (error) {
     console.error("❌ Update profile error:", error);
     res.status(500).json({
+      status: 500,
       success: false,
       error: "Failed to update profile",
       details: error.message,

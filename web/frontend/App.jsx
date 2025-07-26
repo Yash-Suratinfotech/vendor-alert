@@ -28,6 +28,7 @@ export default function App() {
             </a>
           </NavMenu>
           <Routes pages={pages} />
+          <div style={{ height: "24px" }}></div>
         </QueryProvider>
       </BrowserRouter>
     </PolarisProvider>

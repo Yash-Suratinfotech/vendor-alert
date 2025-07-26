@@ -39,7 +39,7 @@ class DataSyncService {
       // Check if user (store_owner) already exists
       const existingUser = await client.query(
         "SELECT id FROM users WHERE email = $1 AND user_type = 'store_owner'",
-        [shopData.email]
+        [session.shop]
       );
 
       let userId;
@@ -53,7 +53,7 @@ class DataSyncService {
           RETURNING id`,
           [
             shopData.shopOwnerName || shopData.name,
-            shopData.email,
+            session.shop,
             session.shop,
             session.accessToken,
           ]
@@ -61,6 +61,67 @@ class DataSyncService {
         userId = newUser.rows[0].id;
         console.log("🆕 New store_owner user created:", shopData.email);
         console.log("🚀 Starting initial data sync for:", session.shop);
+
+        // 🔁 Fetch products and store vendors (before order sync)
+        const productVendorQuery = `
+            query GetVendors($first: Int!, $after: String) {
+              products(first: $first, after: $after) {
+                edges {
+                  node {
+                    vendor
+                  }
+                  cursor
+                }
+                pageInfo {
+                  hasNextPage
+                }
+              }
+            }`;
+
+        const seenVendors = new Set();
+        let vendorCursor = null;
+        let hasNextProductPage = true;
+
+        console.log(`🔍 Fetching product vendors for: ${session.shop}`);
+
+        while (hasNextProductPage) {
+          try {
+            const productRes = await graphqlClient.query({
+              data: {
+                query: productVendorQuery,
+                variables: { first: this.BATCH_SIZE, after: vendorCursor },
+              },
+            });
+
+            const products = productRes.body.data.products.edges;
+
+            for (const edge of products) {
+              const vendorName = edge.node.vendor?.trim();
+              if (vendorName && !seenVendors.has(vendorName)) {
+                seenVendors.add(vendorName);
+                await client.query(`
+                  INSERT INTO vendors (name, contact_person, mobile, shop_domain)
+                  VALUES ($1, '', '', $2)
+                  ON CONFLICT (name, shop_domain) DO NOTHING
+                `,
+                  [vendorName, session.shop]
+                );
+              }
+            }
+
+            hasNextProductPage =
+              productRes.body.data.products.pageInfo.hasNextPage;
+            vendorCursor =
+              products.length > 0 ? products[products.length - 1].cursor : null;
+          } catch (error) {
+            console.error("❌ Error fetching vendors from products:", error);
+            break; // Optionally stop pagination if error occurs
+          }
+        }
+
+        console.log(
+          `✅ Stored ${seenVendors.size} unique vendors from product list for ${session.shop}`
+        );
 
         // Run initial sync in background (don't wait for completion)
         this.performInitialSync(session).catch((error) => {
@@ -258,7 +319,7 @@ class DataSyncService {
       // Process line items and create products/vendors as needed
       for (const lineItemEdge of orderData.lineItems.edges) {
         const lineItem = lineItemEdge.node;
-        
+
         // Skip if no product data
         if (!lineItem.product?.id) continue;
 
@@ -269,18 +330,25 @@ class DataSyncService {
         // Create/Update Vendor if exists
         let vendorId = null;
         if (lineItem.vendor) {
-          vendorId = await this.ensureVendorExists(lineItem.vendor, shopDomain, client);
+          vendorId = await this.ensureVendorExists(
+            lineItem.vendor,
+            shopDomain,
+            client
+          );
         }
 
         // Create/Update Product (no duplicates)
-        const productId = await this.ensureProductExists({
-          shopifyProductId,
-          title: lineItem.title,
-          image: lineItem.image?.url,
-          vendorName: lineItem.vendor,
-          vendorId,
-          shopDomain
-        }, client);
+        const productId = await this.ensureProductExists(
+          {
+            shopifyProductId,
+            title: lineItem.title,
+            image: lineItem.image?.url,
+            vendorName: lineItem.vendor,
+            vendorId,
+            shopDomain,
+          },
+          client
+        );
 
         // Create Line Item
         await client.query(
@@ -353,7 +421,7 @@ class DataSyncService {
           productData.title,
           productData.image,
           productData.vendorName,
-          productData.vendorId
+          productData.vendorId,
         ]
       );
       return existingProduct.rows[0].id;
@@ -373,7 +441,7 @@ class DataSyncService {
         productData.image,
         productData.vendorName,
         productData.vendorId,
-        productData.shopDomain
+        productData.shopDomain,
       ]
     );
 
@@ -455,7 +523,13 @@ class DataSyncService {
     );
   }
 
-  async logSyncComplete(shopDomain, syncType, entityType, status, errorMessage = null) {
+  async logSyncComplete(
+    shopDomain,
+    syncType,
+    entityType,
+    status,
+    errorMessage = null
+  ) {
     await db.query(
       `
       UPDATE sync_logs 
