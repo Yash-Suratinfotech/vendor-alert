@@ -32,8 +32,8 @@ try {
       avatar_url TEXT,
       shop_domain VARCHAR(50) UNIQUE, -- Only for store_owner type
       user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
-      notify_mode VARCHAR(20) CHECK (notify_mode IN ('every_x_hours', 'specific_time')) DEFAULT 'specific_time',
-      notify_value VARCHAR(10) DEFAULT '10 AM',
+      notify_mode VARCHAR(20) CHECK (notify_mode IN ('every_x_hours', 'specific_time')),
+      notify_value VARCHAR(10)',
       initial_sync_completed BOOLEAN DEFAULT FALSE,
       otp VARCHAR(6),
       otp_expires_at TIMESTAMP,

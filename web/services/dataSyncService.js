@@ -46,8 +46,8 @@ class DataSyncService {
         // Insert new store_owner
         const newUser = await client.query(
           `INSERT INTO users 
-          (username, email, user_type, shop_domain, is_verified, is_active)
-          VALUES ($1, $2, 'store_owner', $3, true, true)
+          (username, email, user_type, notify_mode, notify_value, shop_domain, is_verified, is_active)
+          VALUES ($1, $2, 'store_owner', 'specific_time', '8 AM', $3, true, true)
           RETURNING id`,
           [shopData.shopOwnerName || shopData.name, session.shop, session.shop]
         );

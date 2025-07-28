@@ -174,8 +174,7 @@ export default function VendorsPage() {
         vendor.email || "—",
         vendor.upiId || "—",
         <InlineStack gap="200">
-          <Badge tone="info">{stats.products} products</Badge>
-          <Badge tone="success">{stats.orders} orders</Badge>
+          <Badge tone="info">{stats.orders} orders</Badge>
         </InlineStack>,
         <Button size="slim" onClick={() => handleEditVendor(vendor)}>
           Edit

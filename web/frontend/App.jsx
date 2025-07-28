@@ -20,6 +20,9 @@ export default function App() {
             <a href="/vendors" rel="vendors">
               Vendors
             </a>
+            <a href="/orders" rel="orders">
+              Orders
+            </a>
             <a href="/settings" rel="setting">
               Settings
             </a>

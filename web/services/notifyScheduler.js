@@ -150,7 +150,7 @@ async function triggerNotification(shopDomain) {
           [
             storeOwnerId,
             vendorUserId,
-            "order notification",
+            "Order notification",
             JSON.stringify(item),
           ]
         );
@@ -168,6 +168,24 @@ async function triggerNotification(shopDomain) {
       await db.query(
         `UPDATE order_line_items SET notification = true WHERE id = ANY($1::int[])`,
         [lineItemIds]
+      );
+
+      // ✅ Also mark parent orders as notified if all their line items are now notified
+      await db.query(
+        `UPDATE orders
+        SET notification = true
+        WHERE id IN (
+          SELECT o.id
+          FROM orders o
+          WHERE o.shop_domain = $1
+            AND NOT EXISTS (
+              SELECT 1
+              FROM order_line_items oli
+              WHERE oli.order_id = o.id AND oli.notification = false
+            )
+        )
+      `,
+        [shopDomain]
       );
 
       results.push({

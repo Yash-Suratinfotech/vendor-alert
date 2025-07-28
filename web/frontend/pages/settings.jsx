@@ -19,7 +19,6 @@ import React, { useState, useCallback, useEffect } from "react";
 function SettingsPage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [toastActive, setToastActive] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastError, setToastError] = useState(false);
@@ -34,6 +33,11 @@ function SettingsPage() {
   const [notifyValue, setNotifyValue] = useState("");
   const [notifyValueHour, setNotifyValueHour] = useState("");
   const [notifyValuePeriod, setNotifyValuePeriod] = useState("");
+
+  // New states for individual form loading
+  const [loadingProfileSubmit, setLoadingProfileSubmit] = useState(false);
+  const [loadingNotificationSubmit, setLoadingNotificationSubmit] = useState(false);
+  const [loadingPasswordSubmit, setLoadingPasswordSubmit] = useState(false);
 
   const toggleToastActive = useCallback(
     () => setToastActive((active) => !active),
@@ -86,41 +90,59 @@ function SettingsPage() {
     getUserProfile();
   }, [getUserProfile]);
 
-  const handleSave = useCallback(async () => {
-    if (password !== confirmPassword) {
-      setPasswordError("Passwords do not match.");
-      return;
+  const handleSave = useCallback(async (formType) => {
+    let payload = {};
+    let currentSetSubmitting;
+
+    if (formType === "profile") {
+      currentSetSubmitting = setLoadingProfileSubmit;
+      payload = {
+        username,
+        phone,
+        avatar_url: avatarUrl,
+      };
+    } else if (formType === "notification") {
+      currentSetSubmitting = setLoadingNotificationSubmit;
+      const finalNotifyValue =
+        notifyMode === "specific_time"
+          ? `${notifyValueHour} ${notifyValuePeriod}`
+          : notifyValue;
+      payload = {
+        notify_mode: notifyMode,
+        notify_value: finalNotifyValue,
+      };
+    } else if (formType === "password") {
+      currentSetSubmitting = setLoadingPasswordSubmit;
+      if (password !== confirmPassword) {
+        setPasswordError("Passwords do not match.");
+        return;
+      }
+      setPasswordError(null);
+      payload = {
+        password,
+      };
+    } else {
+      return; // Should not happen
     }
-    setPasswordError(null);
 
-    let finalNotifyValue =
-      notifyMode === "specific_time"
-        ? `${notifyValueHour} ${notifyValuePeriod}`
-        : notifyValue;
-
-    setSubmitting(true);
+    currentSetSubmitting(true);
     try {
       const response = await fetch("/api/settings/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          username,
-          phone,
-          avatar_url: avatarUrl,
-          notify_mode: notifyMode,
-          notify_value: finalNotifyValue,
-          ...(password && { password }), // Only send password if it's not empty
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
         showToast("Profile updated successfully!");
-        setPassword(""); // Clear password fields after successful update
-        setConfirmPassword("");
+        if (formType === "password") {
+          setPassword(""); // Clear password fields after successful update
+          setConfirmPassword("");
+        }
       } else {
         const errorData = await response.json();
         showToast(
@@ -132,9 +154,20 @@ function SettingsPage() {
       console.error("Failed to update profile:", error);
       showToast("Failed to update profile data.", true);
     } finally {
-      setSubmitting(false);
+      currentSetSubmitting(false);
     }
-  }, [fetch, username, phone, avatarUrl, password, confirmPassword, showToast]);
+  }, [
+    username,
+    phone,
+    avatarUrl,
+    notifyMode,
+    notifyValue,
+    notifyValueHour,
+    notifyValuePeriod,
+    password,
+    confirmPassword,
+    showToast,
+  ]);
 
   const toastMarkup = toastActive ? (
     <Toast
@@ -170,14 +203,14 @@ function SettingsPage() {
             description="Manage your basic profile details."
           >
             <Card sectioned>
-              <Form onSubmit={handleSave}>
+              <Form onSubmit={() => handleSave("profile")}>
                 <FormLayout>
                   <TextField
                     label="Username"
                     value={username}
                     onChange={setUsername}
                     autoComplete="off"
-                    disabled={submitting}
+                    disabled={loadingProfileSubmit}
                   />
                   <TextField
                     label="Email (read-only)"
@@ -190,17 +223,17 @@ function SettingsPage() {
                     value={phone}
                     onChange={setPhone}
                     autoComplete="tel"
-                    disabled={submitting}
+                    disabled={loadingProfileSubmit}
                   />
-                  <TextField
+                  {/* <TextField
                     label="Avatar URL"
                     value={avatarUrl}
                     onChange={setAvatarUrl}
                     autoComplete="off"
-                    disabled={submitting}
-                  />
+                    disabled={loadingProfileSubmit}
+                  /> */}
                   <BlockStack distribution="trailing">
-                    <Button submit primary loading={submitting}>
+                    <Button submit primary loading={loadingProfileSubmit}>
                       Save
                     </Button>
                   </BlockStack>
@@ -214,7 +247,7 @@ function SettingsPage() {
             description="Choose when your suppliers get notified."
           >
             <Card sectioned>
-              <Form onSubmit={handleSave}>
+              <Form onSubmit={() => handleSave("notification")}>
                 <FormLayout>
                   <Select
                     label="Notification Mode"
@@ -224,6 +257,7 @@ function SettingsPage() {
                     ]}
                     value={notifyMode}
                     onChange={setNotifyMode}
+                    disabled={loadingNotificationSubmit}
                   />
                   {notifyMode === "every_x_hours" && (
                     <TextField
@@ -232,6 +266,7 @@ function SettingsPage() {
                       onChange={setNotifyValue}
                       type="number"
                       autoComplete="off"
+                      disabled={loadingNotificationSubmit}
                     />
                   )}
                   {notifyMode === "specific_time" && (
@@ -246,6 +281,7 @@ function SettingsPage() {
                         }))}
                         value={notifyValueHour}
                         onChange={setNotifyValueHour}
+                        disabled={loadingNotificationSubmit}
                       />
                       <Select
                         id="period-select"
@@ -257,12 +293,13 @@ function SettingsPage() {
                         ]}
                         value={notifyValuePeriod}
                         onChange={setNotifyValuePeriod}
+                        disabled={loadingNotificationSubmit}
                       />
                     </FormLayout.Group>
                   )}
 
                   <BlockStack distribution="trailing">
-                    <Button submit primary loading={submitting}>
+                    <Button submit primary loading={loadingNotificationSubmit}>
                       Save Notification Setting
                     </Button>
                   </BlockStack>
@@ -276,7 +313,7 @@ function SettingsPage() {
             description="Set or update your account password."
           >
             <Card sectioned>
-              <Form onSubmit={handleSave}>
+              <Form onSubmit={() => handleSave("password")}>
                 <FormLayout>
                   {user?.has_password ? (
                     <Text as="p" color="subdued">
@@ -295,7 +332,7 @@ function SettingsPage() {
                     onChange={setPassword}
                     autoComplete="new-password"
                     error={passwordError}
-                    disabled={submitting}
+                    disabled={loadingPasswordSubmit}
                   />
                   <TextField
                     label="Confirm New Password"
@@ -304,10 +341,10 @@ function SettingsPage() {
                     onChange={setConfirmPassword}
                     autoComplete="new-password"
                     error={passwordError}
-                    disabled={submitting}
+                    disabled={loadingPasswordSubmit}
                   />
                   <BlockStack distribution="trailing">
-                    <Button submit primary loading={submitting}>
+                    <Button submit primary loading={loadingPasswordSubmit}>
                       Set Password
                     </Button>
                   </BlockStack>

@@ -15,20 +15,24 @@ import {
   List,
   BlockStack,
   InlineStack,
+  Toast,
   Frame,
   Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "react-query";
 import { ViewIcon } from "@shopify/polaris-icons";
 
 export default function OrdersPage() {
+  const [token, setToken] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const itemsPerPage = 25;
 
   // Fetch orders data with enhanced debugging
@@ -75,6 +79,28 @@ export default function OrdersPage() {
     refetchOnWindowFocus: false,
   });
 
+  const getUserToken = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/token");
+      if (response.ok) {
+        const data = await response.json();
+        setToken(data.token);
+      } else {
+        const errorData = await response.json();
+        setToastMessage(`Error: ${errorData.error || "Failed to fetch token"}`);
+        setShowToast(true);
+      }
+    } catch (error) {
+      console.error("Failed to fetch token:", error);
+      setToastMessage("Failed to fetch token.");
+      setShowToast(true);
+    }
+  }, [fetch, showToast]);
+
+  useEffect(() => {
+    getUserToken();
+  }, [getUserToken]);
+
   const handleVendorFilterChange = useCallback((value) => {
     setVendorFilter(value);
     setCurrentPage(1);
@@ -96,7 +122,7 @@ export default function OrdersPage() {
       <Text variant="bodyMd" fontWeight="semibold">
         {order.name}
       </Text>,
-      order.notified ? (
+      order.notification ? (
         <Badge tone="success">Notified</Badge>
       ) : (
         <Badge tone="warning">Pending</Badge>
@@ -184,6 +210,10 @@ export default function OrdersPage() {
       </BlockStack>
     </Banner>
   );
+
+  const toastMarkup = showToast ? (
+    <Toast content={toastMessage} onDismiss={() => setShowToast(false)} />
+  ) : null;
 
   if (error) {
     return (
@@ -302,24 +332,30 @@ export default function OrdersPage() {
             </Card>
           </Layout.Section>
 
-          {/* Order Stats Summary */}
-          {ordersData?.orders && ordersData.orders.length > 0 && (
-            <Layout.Section variant="oneThird">
-              <Card>
-                <BlockStack gap="400">
-                  <Text variant="headingMd">Order Summary</Text>
-                  <div>
-                    <Text variant="headingLg" as="h3">
-                      {ordersData.orders.filter((o) => o.notified).length}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued">
-                      Vendors Notified
-                    </Text>
-                  </div>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-          )}
+          <Layout.Section variant="oneThird">
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd">Orders chats box</Text>
+                <div>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      if (token) {
+                        window.open(
+                          `http://localhost:3000/verify-user?token=${token}`,
+                          "_blank"
+                        );
+                      } else {
+                        alert("Missing token");
+                      }
+                    }}
+                  >
+                    Go to chats
+                  </Button>
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
         </Layout>
 
         {/* Order Details Modal */}
@@ -357,8 +393,8 @@ export default function OrdersPage() {
                         <Text variant="bodyMd" fontWeight="medium">
                           Notification:
                         </Text>
-                        {selectedOrder.notified ? (
-                          <Badge tone="success">Vendors Notified</Badge>
+                        {selectedOrder.notification ? (
+                          <Badge tone="success">Notified</Badge>
                         ) : (
                           <Badge tone="warning">Pending</Badge>
                         )}
@@ -398,9 +434,7 @@ export default function OrdersPage() {
                                 <Text variant="bodySm" tone="subdued">
                                   Notification:{"  "}
                                   {item.notification ? (
-                                    <Badge tone="success">
-                                      Vendors Notified
-                                    </Badge>
+                                    <Badge tone="success">Notified</Badge>
                                   ) : (
                                     <Badge tone="warning">Pending</Badge>
                                   )}
