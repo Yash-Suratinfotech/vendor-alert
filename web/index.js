@@ -13,7 +13,6 @@ import vendorRouter from "./routes/vendor.js";
 import webhookRouter from "./routes/webhook.js";
 import ordersRouter from "./routes/orders.js";
 import chatRouter from "./routes/chat/index.js";
-import notifyOrdersApi from "./routes/notify-orders.js";
 import settingsApi from "./routes/settings.js";
 
 // Import webhook routes
@@ -94,7 +93,6 @@ app.use("/api/settings", settingsApi);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/orders", ordersRouter);
-app.use("/api/notify-orders", notifyOrdersApi);
 app.use("/chat", chatRouter);
 
 app.use(shopify.cspHeaders());

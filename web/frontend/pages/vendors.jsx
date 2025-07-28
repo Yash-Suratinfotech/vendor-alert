@@ -116,10 +116,6 @@ export default function VendorsPage() {
     getUserToken();
   }, [getUserToken]);
 
-  // useEffect(() => {
-  //   fetch("/api/notify-orders");
-  // }, []);
-
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value);
     setCurrentPage(1);
