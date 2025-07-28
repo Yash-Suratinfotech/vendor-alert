@@ -39,6 +39,15 @@ export const verifyToken = (token) => {
   }
 };
 
+export const isVerifyToken = (token) => {
+  try {
+    jwt.verify(token, JWT_SECRET);
+    return true;
+  } catch (error) {
+    return false; 
+  }
+};
+
 export const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };

@@ -3,6 +3,7 @@ import express from "express";
 import db from "../db.js";
 import bcrypt from "bcrypt";
 import dataSyncService from "../services/dataSyncService.js";
+import { generateToken, isVerifyToken } from "../utils/jwt.js";
 
 const router = express.Router();
 
@@ -224,13 +225,13 @@ router.get("/status", async (req, res) => {
   }
 });
 
-// GET /api/settings/token - Get store owner profile
+// GET /api/settings/token - Get store owner access token
 router.get("/token", async (req, res) => {
   try {
     const shopDomain = res.locals.shopify.session.shop;
 
     const userResult = await db.query(
-      `SELECT access_token FROM users WHERE shop_domain = $1 AND user_type = 'store_owner'`,
+      `SELECT id, access_token FROM users WHERE shop_domain = $1 AND user_type = 'store_owner'`,
       [shopDomain]
     );
 
@@ -242,19 +243,37 @@ router.get("/token", async (req, res) => {
       });
     }
 
-    const user = userResult.rows[0];
+    const { id: userId, access_token: existingToken } = userResult.rows[0];
 
-    res.status(200).json({
+    const isValid = existingToken ? isVerifyToken(existingToken) : false;
+
+    if (isValid) {
+      // ✅ Token is still valid
+      return res.status(200).json({
+        status: 200,
+        success: true,
+        token: existingToken,
+      });
+    }
+
+    const newToken = generateToken(userId, shopDomain, "store_owner");
+
+    await db.query(`UPDATE users SET access_token = $1 WHERE id = $2`, [
+      newToken,
+      userId,
+    ]);
+
+    return res.status(200).json({
       status: 200,
       success: true,
-      token: user.access_token,
+      token: newToken,
     });
   } catch (error) {
-    console.error("❌ Get settings profile error:", error);
+    console.error("❌ Get token error:", error);
     res.status(500).json({
       status: 500,
       success: false,
-      error: "Failed to fetch settings profile",
+      error: "Failed to fetch or refresh token",
       details: error.message,
     });
   }

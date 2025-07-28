@@ -18,7 +18,6 @@ import settingsApi from "./routes/settings.js";
 
 // Import webhook routes
 import PrivacyWebhookHandlers from "./webhook/privacy.js";
-import ProductsWebhookHandlers from "./webhook/products.js";
 import OrdersWebhookHandlers from "./webhook/orders.js";
 import AppWebhookHandlers from "./webhook/app.js";
 
@@ -70,15 +69,14 @@ app.post(
   shopify.processWebhooks({
     webhookHandlers: {
       ...PrivacyWebhookHandlers,
-      ...ProductsWebhookHandlers,
       ...OrdersWebhookHandlers,
       ...AppWebhookHandlers,
     },
   })
 );
 
-// 🔁 Cron job to run every 5 minutes
-cron.schedule("*/5 * * * *", async () => {
+// 🔁 Cron job to run every 1 minutes
+cron.schedule("*/1 * * * *", async () => {
   console.log("🕒 Running notifyScheduler...");
   await runNotifyScheduler();
 });

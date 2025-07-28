@@ -3,7 +3,7 @@
 client_id = "4904a82815541c3776f87b3268f92d70"
 name = "Vendor Alert"
 handle = "vendor-alert"
-application_url = "https://write-campaign-powell-merry.trycloudflare.com"
+application_url = "https://rf-do-wesley-waiting.trycloudflare.com"
 embedded = true
 
 [build]
@@ -19,33 +19,29 @@ api_version = "2025-07"
 
   [[webhooks.subscriptions]]
   topics = [
-  "orders/cancelled",
-  "orders/create",
-  "orders/fulfilled",
-  "orders/paid",
-  "orders/updated"
-]
+    "orders/cancelled",
+    "orders/create",
+    "orders/fulfilled",
+    "orders/paid",
+    "orders/updated"
+  ]
   uri = "/api/webhooks/orders"
   include_fields = [
-  "id",
-  "name",
-  "line_items",
-  "financial_status",
-  "fulfillment_status",
-  "created_at",
-  "updated_at"
-]
-
-  [[webhooks.subscriptions]]
-  topics = [ "products/create", "products/delete", "products/update" ]
-  uri = "/api/webhooks/products"
+    "id",
+    "name",
+    "line_items",
+    "financial_status",
+    "fulfillment_status",
+    "created_at",
+    "updated_at"
+  ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_customers,read_orders,read_products,write_products"
 
 [auth]
-redirect_urls = ["https://write-campaign-powell-merry.trycloudflare.com/auth/callback", "https://write-campaign-powell-merry.trycloudflare.com/auth/shopify/callback", "https://write-campaign-powell-merry.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://rf-do-wesley-waiting.trycloudflare.com/auth/callback", "https://rf-do-wesley-waiting.trycloudflare.com/auth/shopify/callback", "https://rf-do-wesley-waiting.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

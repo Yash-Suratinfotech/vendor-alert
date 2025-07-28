@@ -37,6 +37,8 @@ export async function runNotifyScheduler() {
     const shopOwners = result.rows;
 
     for (const { shop_domain, notify_mode, notify_value } of shopOwners) {
+      console.log("✌️notify_value --->", notify_value);
+      console.log("✌️currentTime --->", currentTime);
       if (notify_mode === "specific_time") {
         if (notify_value === currentTime) {
           await triggerNotification(shop_domain);
