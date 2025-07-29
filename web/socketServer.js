@@ -256,19 +256,6 @@ class SocketManager {
             [response === "accept", messageId]
           );
 
-          // Send response message back to store owner
-          const responseText =
-            response === "accept"
-              ? "✅ Order accepted! I'll prepare your items."
-              : "❌ Sorry, I can't fulfill this order right now.";
-
-          const responseMessage = await this.sendSystemMessage(
-            user.id,
-            storeOwnerId,
-            responseText,
-            "text"
-          );
-
           // Notify store owner about vendor response
           const conversationRoom = this.getConversationRoom(
             user.id,
