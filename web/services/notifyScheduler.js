@@ -1,4 +1,4 @@
-// web/services/notifyScheduler.js
+// web/services/notifyScheduler.js - Updated with Socket.IO integration
 import dotenv from "dotenv";
 dotenv.config();
 import path from "path";
@@ -36,21 +36,15 @@ export async function runNotifyScheduler() {
     const shopOwners = result.rows;
 
     for (const { shop_domain, notify_mode, notify_value } of shopOwners) {
-      console.log("✌️notify_value --->", notify_value);
-      console.log("✌️currentTime --->", currentTime);
       if (notify_mode === "specific_time") {
         if (notify_value === currentTime) {
-          console.log("✌️specific_time --->");
           await triggerNotification(shop_domain);
         }
       }
 
       if (notify_mode === "every_x_hours") {
         const interval = parseInt(notify_value);
-        console.log("✌️interval --->", interval);
         if (interval && currentHour % interval === 0) {
-          console.log("✌️currentHour --->", currentHour);
-          console.log("✌️every_x_hours --->");
           await triggerNotification(shop_domain);
         }
       }
@@ -128,6 +122,15 @@ async function triggerNotification(shopDomain) {
 
     const results = [];
 
+    // 🔥 Import socketManager dynamically to avoid circular dependencies
+    let socketManager = null;
+    try {
+      const socketModule = await import("../socketServer.js");
+      socketManager = socketModule.default;
+    } catch (error) {
+      console.warn("⚠️ Socket manager not available:", error.message);
+    }
+
     for (const [vendorUserId, { items, lineItemIds }] of vendorMap.entries()) {
       // Group by SKU to merge same products
       const groupedBySKU = {};
@@ -144,26 +147,62 @@ async function triggerNotification(shopDomain) {
       const mergedItems = Object.values(groupedBySKU);
 
       for (const item of mergedItems) {
-        const messageResult = await db.query(
-          `INSERT INTO messages 
-               (sender_id, receiver_id, content, message_type, order_data)
-             VALUES ($1, $2, $3, 'order_notification', $4)
-             RETURNING id`,
-          [
-            storeOwnerId,
+        try {
+          // Save message to database
+          const messageResult = await db.query(
+            `INSERT INTO messages 
+                 (sender_id, receiver_id, content, message_type, order_data)
+               VALUES ($1, $2, $3, 'order_notification', $4)
+               RETURNING id`,
+            [
+              storeOwnerId,
+              vendorUserId,
+              "Order notification",
+              JSON.stringify(item),
+            ]
+          );
+
+          const messageId = messageResult.rows[0].id;
+
+          await db.query(
+            `INSERT INTO message_recipients (message_id, delivery_status)
+               VALUES ($1, 'sent')`,
+            [messageId]
+          );
+
+          // 🔥 SOCKET.IO INTEGRATION - Send real-time notification
+          if (socketManager && socketManager.io) {
+            try {
+              await socketManager.sendOrderNotification(
+                storeOwnerId,
+                vendorUserId,
+                item
+              );
+              console.log(
+                `🔔 Real-time notification sent to vendor ${vendorUserId}`
+              );
+            } catch (socketError) {
+              console.error("❌ Socket notification error:", socketError);
+              // Continue with regular notification flow even if socket fails
+            }
+          }
+
+          results.push({
             vendorUserId,
-            "Order notification",
-            JSON.stringify(item),
-          ]
-        );
-
-        const messageId = messageResult.rows[0].id;
-
-        await db.query(
-          `INSERT INTO message_recipients (message_id, delivery_status)
-             VALUES ($1, 'sent')`,
-          [messageId]
-        );
+            messageId,
+            item: item.name,
+            socketSent: !!socketManager,
+          });
+        } catch (error) {
+          console.error(
+            `❌ Error sending notification to vendor ${vendorUserId}:`,
+            error
+          );
+          results.push({
+            vendorUserId,
+            error: error.message,
+          });
+        }
       }
 
       // ✅ Mark all line items as notified
@@ -189,15 +228,11 @@ async function triggerNotification(shopDomain) {
       `,
         [shopDomain]
       );
-
-      results.push({
-        vendorUserId,
-        itemCount: mergedItems.length,
-        message: "Notification sent",
-      });
     }
 
     console.log(`✅ Notification process completed for ${shopDomain}`);
+    console.log(`📊 Results:`, results);
+
     return { success: true, notified: results };
   } catch (error) {
     console.error(`❌ Error for ${shopDomain}:`, error.message);

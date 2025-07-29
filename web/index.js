@@ -1,12 +1,14 @@
-// web/index.js
+// web/index.js - Fixed with single listen call
 import { join } from "path";
 import { readFileSync } from "fs";
 import express from "express";
+import { createServer } from "http";
 import serveStatic from "serve-static";
 import cors from "cors";
 import cron from "node-cron";
 
 import shopify from "./shopify.js";
+import socketManager from "./socketServer.js";
 
 // Import existing routes
 import vendorRouter from "./routes/vendor.js";
@@ -35,11 +37,38 @@ const STATIC_PATH =
     : `${process.cwd()}/frontend/`;
 
 const app = express();
+const httpServer = createServer(app);
 
-app.use(cors());
+// Initialize Socket.IO
+socketManager.initialize(httpServer);
+
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true
+}));
 
 // Trust proxy for accurate IP detection
 app.set("trust proxy", true);
+
+// Basic health check endpoint (no Shopify auth required)
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    socketIO: socketManager ? "initialized" : "not initialized",
+  });
+});
+
+// Socket.IO status endpoint (for debugging)
+app.get("/socket-status", (req, res) => {
+  res.status(200).json({
+    socketIO: {
+      initialized: !!socketManager,
+      connectedUsers: socketManager ? socketManager.connectedUsers.size : 0,
+    },
+  });
+});
 
 // Set up Shopify authentication and webhook handling
 app.get(shopify.config.auth.path, shopify.auth.begin());
@@ -80,25 +109,42 @@ cron.schedule("*/1 * * * *", async () => {
   await runNotifyScheduler();
 });
 
-// If you are adding routes outside of the /api path, remember to
-// also add a proxy rule for them in web/frontend/vite.config.js
-
-// API routes - require authentication
-app.use("/api/*", shopify.validateAuthenticatedSession());
-
+// Parse JSON for API routes
 app.use(express.json());
 
-// Mount API routes
+// Chat routes - NO Shopify authentication required (they have their own JWT auth)
+app.use("/chat", chatRouter);
+
+// API routes - require Shopify authentication
+app.use("/api/*", shopify.validateAuthenticatedSession());
+
+// Mount API routes that require Shopify authentication
 app.use("/api/settings", settingsApi);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/orders", ordersRouter);
-app.use("/chat", chatRouter);
 
+// Make socketManager available to routes
+app.locals.socketManager = socketManager;
+
+// Serve static files and CSP headers
 app.use(shopify.cspHeaders());
 app.use(serveStatic(STATIC_PATH, { index: false }));
 
-app.use("/*", shopify.ensureInstalledOnShop(), async (_req, res, _next) => {
+// Main app route - only for Shopify embedded app (with proper route filtering)
+app.use("/*", (req, res, next) => {
+  // Skip Shopify middleware for Socket.IO and other non-app routes
+  if (req.path.startsWith('/socket.io') || 
+      req.path.startsWith('/health') || 
+      req.path.startsWith('/socket-status') ||
+      req.path.startsWith('/chat') ||
+      req.path.startsWith('/api')) {
+    return res.status(404).json({ error: "Route not found" });
+  }
+  
+  // Apply Shopify middleware for app routes only
+  return shopify.ensureInstalledOnShop()(req, res, next);
+}, async (req, res) => {
   return res
     .status(200)
     .set("Content-Type", "text/html")
@@ -109,6 +155,26 @@ app.use("/*", shopify.ensureInstalledOnShop(), async (_req, res, _next) => {
     );
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Enhanced Vendor Alert app running on port ${PORT}`);
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error("❌ Server error:", error);
+  
+  if (error.name === 'ShopifyError') {
+    return res.status(400).json({ 
+      error: "Shopify integration error",
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+  
+  res.status(500).json({ 
+    error: "Internal server error",
+    details: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
+
+// IMPORTANT: Only use httpServer.listen() - NOT app.listen()
+// This is the key fix for the EADDRINUSE error
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Enhanced Vendor Alert app with Socket.IO running on port ${PORT}`);
+  console.log(`📡 Socket.IO server initialized`);
 });
