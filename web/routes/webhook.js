@@ -219,6 +219,23 @@ router.post("/app-uninstalled", verifyWebhook, async (req, res) => {
   console.log(
     `🗑️ App uninstalled for shop: ${shop} - data will be cleaned in 48h`
   );
+  const client = await db.getClient();
+  await client.query("BEGIN");
+  
+  // Clean up all shop data in correct order (respecting foreign keys)
+  // This removes all business data, not personal customer data
+  await client.query(
+    "DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE shop_domain = $1)",
+    [shop]
+  );
+  await client.query("DELETE FROM orders WHERE shop_domain = $1", [shop]);
+  await client.query("DELETE FROM products WHERE shop_domain = $1", [shop]);
+  await client.query("DELETE FROM vendors WHERE shop_domain = $1", [shop]);
+  await client.query("DELETE FROM sync_logs WHERE shop_domain = $1", [shop]);
+  await client.query("DELETE FROM users WHERE shop_domain = $1", [shop]);
+
+  await client.query("COMMIT");
+  client.release();
   res.status(200).send("OK");
 });
 
