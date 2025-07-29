@@ -47,7 +47,9 @@ export async function runNotifyScheduler() {
 
       if (notify_mode === "every_x_hours") {
         const interval = parseInt(notify_value);
+        console.log("✌️interval --->", interval);
         if (interval && currentHour % interval === 0) {
+          console.log("✌️currentHour --->", currentHour);
           console.log("✌️every_x_hours --->");
           await triggerNotification(shop_domain);
         }

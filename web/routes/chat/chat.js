@@ -20,6 +20,7 @@ router.get("/conversations", async (req, res) => {
           u.id as contact_id,
           u.username as contact_name,
           u.email as contact_email,
+          u.color as contact_color,
           u.avatar_url as contact_avatar,
           'vendor' as contact_type,
           v.name as vendor_name,
@@ -46,6 +47,7 @@ router.get("/conversations", async (req, res) => {
           u.id as contact_id,
           u.username as contact_name,
           u.email as contact_email,
+          u.color as contact_color,
           u.avatar_url as contact_avatar,
           'store_owner' as contact_type,
           u.username as shop_name,
@@ -66,18 +68,6 @@ router.get("/conversations", async (req, res) => {
       );
     }
 
-    function getRandomGradient() {
-      const gradients = [
-        "linear-gradient(135deg, #74b9ff, #0984e3)",
-        "linear-gradient(135deg, #ff6b6b, #ee5a24)",
-        "linear-gradient(135deg, #fd79a8, #e84393)",
-        "linear-gradient(135deg, #55a3ff, #3742fa)",
-        "linear-gradient(135deg, #fd7474, #ff3838)",
-        "linear-gradient(135deg, #00b894, #00a085)",
-      ];
-      return gradients[Math.floor(Math.random() * gradients.length)];
-    }
-
     const formattedConversations = conversations.rows.map((conv) => ({
       contactId: conv.contact_id,
       contactName: conv.vendor_name || conv.shop_name || conv.contact_name,
@@ -87,7 +77,7 @@ router.get("/conversations", async (req, res) => {
       lastMessage: conv.last_message || "No messages yet",
       lastMessageTime: conv.last_message_time,
       unreadCount: parseInt(conv.unread_count || 0),
-      color: getRandomGradient(),
+      color: conv.contact_color,
       metadata: {
         vendorName: conv.vendor_name,
         vendorMobile: conv.vendor_mobile,

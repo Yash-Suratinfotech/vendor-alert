@@ -30,6 +30,7 @@ try {
       access_token TEXT,
       phone VARCHAR(15),
       avatar_url TEXT,
+      color VARCHAR(100),
       shop_domain VARCHAR(50) UNIQUE, -- Only for store_owner type
       user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('vendor', 'store_owner')),
       notify_mode VARCHAR(20) CHECK (notify_mode IN ('every_x_hours', 'specific_time')),

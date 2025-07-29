@@ -60,15 +60,35 @@ router.post("/register", async (req, res) => {
     const otp = generateOTP();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+    // Random gradient color
+    function getRandomGradient() {
+      const gradients = [
+        "linear-gradient(135deg, #74b9ff, #0984e3)",
+        "linear-gradient(135deg, #ff6b6b, #ee5a24)",
+        "linear-gradient(135deg, #fd79a8, #e84393)",
+        "linear-gradient(135deg, #55a3ff, #3742fa)",
+        "linear-gradient(135deg, #fd7474, #ff3838)",
+        "linear-gradient(135deg, #00b894, #00a085)",
+      ];
+      return gradients[Math.floor(Math.random() * gradients.length)];
+    }
+
     // Create user
     const username = email.split("@")[0].toLowerCase();
     const userResult = await client.query(
       `INSERT INTO users (
         username, email, password_hash, user_type, 
-        otp, otp_expires_at, is_active, is_verified
-      ) VALUES ($1, $2, $3, 'vendor', $4, $5, true, true)
+        otp, otp_expires_at, color, is_active, is_verified
+      ) VALUES ($1, $2, $3, 'vendor', $4, $5, $6, true, true)
       RETURNING id, username, email, user_type`,
-      [username, email.toLowerCase(), hashedPassword, otp, otpExpiresAt]
+      [
+        username,
+        email.toLowerCase(),
+        hashedPassword,
+        otp,
+        otpExpiresAt,
+        getRandomGradient(),
+      ]
     );
 
     const user = userResult.rows[0];
@@ -546,7 +566,7 @@ router.post("/verify-user", async (req, res) => {
       status: 200,
       success: true,
       user,
-      token
+      token,
     });
   } catch (error) {
     console.error("❌ Get profile error:", error);

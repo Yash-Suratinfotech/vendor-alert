@@ -36,6 +36,19 @@ class DataSyncService {
       const client = await db.getClient();
       await client.query("BEGIN");
 
+      // Random gradient color
+      function getRandomGradient() {
+        const gradients = [
+          "linear-gradient(135deg, #74b9ff, #0984e3)",
+          "linear-gradient(135deg, #ff6b6b, #ee5a24)",
+          "linear-gradient(135deg, #fd79a8, #e84393)",
+          "linear-gradient(135deg, #55a3ff, #3742fa)",
+          "linear-gradient(135deg, #fd7474, #ff3838)",
+          "linear-gradient(135deg, #00b894, #00a085)",
+        ];
+        return gradients[Math.floor(Math.random() * gradients.length)];
+      }
+
       // Check if user (store_owner) already exists
       const existingUser = await client.query(
         "SELECT id FROM users WHERE email = $1 AND user_type = 'store_owner'",
@@ -46,10 +59,15 @@ class DataSyncService {
         // Insert new store_owner
         const newUser = await client.query(
           `INSERT INTO users 
-          (username, email, user_type, notify_mode, notify_value, shop_domain, is_verified, is_active)
-          VALUES ($1, $2, 'store_owner', 'specific_time', '8 AM', $3, true, true)
+          (username, email, user_type, notify_mode, notify_value, shop_domain, color, is_verified, is_active)
+          VALUES ($1, $2, 'store_owner', 'specific_time', '8 AM', $3, $4, true, true)
           RETURNING id`,
-          [shopData.shopOwnerName || shopData.name, session.shop, session.shop]
+          [
+            shopData.shopOwnerName || shopData.name,
+            session.shop,
+            session.shop,
+            getRandomGradient(),
+          ]
         );
         const userId = newUser.rows[0].id;
 
