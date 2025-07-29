@@ -1,4 +1,4 @@
-// web/socketServer.js - Socket.IO integration for real-time chat
+// web/socketServer.js - Updated Socket.IO integration with fixed read message handling
 import { Server } from "socket.io";
 import { verifyToken } from "./utils/jwt.js";
 import db from "./db.js";
@@ -208,7 +208,7 @@ class SocketManager {
         }
       });
 
-      // Mark message as read
+      // Mark single message as read - Fixed implementation
       socket.on("mark_message_read", async (data) => {
         try {
           const user = this.userSockets.get(socket.id);
@@ -216,22 +216,130 @@ class SocketManager {
 
           const { messageId, senderId } = data;
 
-          await db.query(
+          // Update message recipient
+          const result = await db.query(
             `UPDATE message_recipients 
              SET is_read = true, read_at = NOW(), delivery_status = 'read'
-             WHERE message_id = $1`,
-            [messageId]
+             WHERE message_id = $1 
+             AND message_id IN (
+               SELECT id FROM messages 
+               WHERE receiver_id = $2 AND sender_id = $3 AND is_deleted = false
+             )
+             RETURNING *`,
+            [messageId, user.id, senderId]
           );
 
-          // Notify sender about read receipt
-          const conversationRoom = this.getConversationRoom(user.id, senderId);
-          this.io.to(conversationRoom).emit("message_read", {
-            messageId,
-            readAt: new Date(),
-            readBy: user.id,
-          });
+          if (result.rows.length > 0) {
+            // Notify sender about read receipt
+            const conversationRoom = this.getConversationRoom(user.id, senderId);
+            this.io.to(conversationRoom).emit("message_read", {
+              messageId,
+              readAt: new Date(),
+              readBy: user.id,
+            });
+
+            console.log(`📖 Message ${messageId} marked as read by user ${user.id}`);
+          }
         } catch (error) {
           console.error("❌ Error marking message as read:", error);
+        }
+      });
+
+      // Mark multiple messages as read - New implementation
+      socket.on("mark_messages_read", async (data) => {
+        try {
+          const user = this.userSockets.get(socket.id);
+          if (!user) return;
+
+          const { messageIds, contactId } = data;
+
+          if (!messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
+            return;
+          }
+
+          // Update multiple message recipients
+          const result = await db.query(
+            `UPDATE message_recipients 
+             SET is_read = true, read_at = NOW(), delivery_status = 'read'
+             WHERE message_id = ANY($1::int[])
+             AND message_id IN (
+               SELECT id FROM messages 
+               WHERE receiver_id = $2 AND sender_id = $3 AND is_deleted = false
+             )
+             RETURNING message_id`,
+            [messageIds, user.id, contactId]
+          );
+
+          const updatedMessageIds = result.rows.map(row => row.message_id);
+
+          if (updatedMessageIds.length > 0) {
+            // Notify sender about read receipts
+            const conversationRoom = this.getConversationRoom(user.id, contactId);
+            this.io.to(conversationRoom).emit("messages_read", {
+              messageIds: updatedMessageIds,
+              readAt: new Date(),
+              readBy: user.id,
+            });
+
+            // Update unread count for sender
+            this.io.to(`user_${contactId}`).emit("unread_count_updated", {
+              contactId: user.id,
+              count: 0,
+            });
+
+            console.log(`📖 ${updatedMessageIds.length} messages marked as read by user ${user.id}`);
+          }
+        } catch (error) {
+          console.error("❌ Error marking messages as read:", error);
+        }
+      });
+
+      // Mark conversation as read - Auto-mark unread messages when joining conversation
+      socket.on("mark_conversation_read", async (data) => {
+        try {
+          const user = this.userSockets.get(socket.id);
+          if (!user) return;
+
+          const { contactId } = data;
+
+          // Get all unread messages from this contact
+          const unreadMessages = await db.query(
+            `SELECT m.id FROM messages m
+             JOIN message_recipients mr ON mr.message_id = m.id
+             WHERE m.sender_id = $1 AND m.receiver_id = $2 
+             AND mr.is_read = false AND m.is_deleted = false`,
+            [contactId, user.id]
+          );
+
+          if (unreadMessages.rows.length > 0) {
+            const messageIds = unreadMessages.rows.map(row => row.id);
+
+            // Mark all as read
+            await db.query(
+              `UPDATE message_recipients 
+               SET is_read = true, read_at = NOW(), delivery_status = 'read'
+               WHERE message_id = ANY($1::int[])`,
+              [messageIds]
+            );
+
+            // Notify sender about read receipts
+            const conversationRoom = this.getConversationRoom(user.id, contactId);
+            this.io.to(conversationRoom).emit("messages_read", {
+              messageIds,
+              readAt: new Date(),
+              readBy: user.id,
+            });
+
+            // Update unread count
+            this.io.to(`user_${contactId}`).emit("unread_count_updated", {
+              contactId: user.id,
+              count: 0,
+            });
+
+            console.log(`📖 Conversation marked as read: ${messageIds.length} messages from ${contactId}`);
+          }
+        } catch (error) {
+          console.error("❌ Error marking conversation as read:", error);
         }
       });
 
@@ -256,6 +364,26 @@ class SocketManager {
             [response === "accept", messageId]
           );
 
+          // Send response message
+          const responseMessage =
+            response === "accept"
+              ? "✅ Order accepted! I'll prepare your items."
+              : "❌ Sorry, I can't fulfill this order right now.";
+
+          const responseResult = await db.query(
+            `INSERT INTO messages (sender_id, receiver_id, content, message_type)
+             VALUES ($1, $2, $3, 'text')
+             RETURNING *`,
+            [user.id, storeOwnerId, responseMessage]
+          );
+
+          // Create recipient record for response
+          await db.query(
+            `INSERT INTO message_recipients (message_id, delivery_status)
+             VALUES ($1, 'sent')`,
+            [responseResult.rows[0].id]
+          );
+
           // Notify store owner about vendor response
           const conversationRoom = this.getConversationRoom(
             user.id,
@@ -264,7 +392,12 @@ class SocketManager {
           this.io.to(conversationRoom).emit("order_response", {
             originalMessageId: messageId,
             response,
-            responseMessage,
+            responseMessage: {
+              id: responseResult.rows[0].id,
+              content: responseMessage,
+              senderId: user.id,
+              createdAt: responseResult.rows[0].created_at,
+            },
             vendor: {
               id: user.id,
               name: user.username,

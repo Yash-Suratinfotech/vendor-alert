@@ -1,4 +1,4 @@
-// web/routes/chat/chat.js - Complete Updated with Socket.IO integration
+// web/routes/chat/chat.js - Updated with fixed read message handling
 import express from "express";
 import db from "../../db.js";
 
@@ -33,7 +33,7 @@ router.get("/conversations", async (req, res) => {
            ORDER BY created_at DESC LIMIT 1) as last_message_time,
           (SELECT COUNT(*) FROM messages m
            JOIN message_recipients mr ON mr.message_id = m.id
-           WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false) as unread_count,
+           WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false AND m.is_deleted = false) as unread_count,
           u.last_active,
           CASE 
             WHEN u.last_active > NOW() - INTERVAL '5 minutes' THEN true 
@@ -65,7 +65,7 @@ router.get("/conversations", async (req, res) => {
            ORDER BY created_at DESC LIMIT 1) as last_message_time,
           (SELECT COUNT(*) FROM messages m
            JOIN message_recipients mr ON mr.message_id = m.id
-           WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false) as unread_count,
+           WHERE m.sender_id = u.id AND m.receiver_id = $1 AND mr.is_read = false AND m.is_deleted = false) as unread_count,
           u.last_active,
           CASE 
             WHEN u.last_active > NOW() - INTERVAL '5 minutes' THEN true 
@@ -332,17 +332,32 @@ router.post("/messages", async (req, res) => {
   }
 });
 
-// PUT /chat/messages/:id/read - Mark message as read
+// PUT /chat/messages/:id/read - Mark single message as read
 router.put("/messages/:id/read", async (req, res) => {
   try {
     const messageId = req.params.id;
+    const userId = req.user.id; // Get from authenticated user
 
-    await db.query(
+    // Update message recipient record
+    const updateResult = await db.query(
       `UPDATE message_recipients 
        SET is_read = true, read_at = NOW(), delivery_status = 'read'
-       WHERE message_id = $1`,
-      [messageId]
+       WHERE message_id = $1 
+       AND message_id IN (
+         SELECT id FROM messages 
+         WHERE receiver_id = $2 AND is_deleted = false
+       )
+       RETURNING *`,
+      [messageId, userId]
     );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({
+        status: 404,
+        success: false,
+        error: "Message not found or not authorized to mark as read",
+      });
+    }
 
     // 🔥 SOCKET.IO INTEGRATION - Send read receipt
     const socketManager = req.app.locals.socketManager;
@@ -364,6 +379,7 @@ router.put("/messages/:id/read", async (req, res) => {
           socketManager.io.to(conversationRoom).emit("message_read", {
             messageId,
             readAt: new Date(),
+            readBy: userId,
           });
         }
       } catch (socketError) {
@@ -382,6 +398,119 @@ router.put("/messages/:id/read", async (req, res) => {
       status: 500,
       success: false,
       error: "Failed to mark message as read",
+    });
+  }
+});
+
+// PUT /chat/messages/mark-read - Mark multiple messages as read
+router.put("/messages/mark-read", async (req, res) => {
+  try {
+    const { messageIds, contactId } = req.body;
+    const userId = req.user.id;
+
+    if (!messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        error: "Message IDs array is required",
+      });
+    }
+
+    // Update multiple message recipients
+    const updateResult = await db.query(
+      `UPDATE message_recipients 
+       SET is_read = true, read_at = NOW(), delivery_status = 'read'
+       WHERE message_id = ANY($1::int[])
+       AND message_id IN (
+         SELECT id FROM messages 
+         WHERE receiver_id = $2 AND is_deleted = false
+         ${contactId ? "AND sender_id = $3" : ""}
+       )
+       RETURNING message_id`,
+      contactId ? [messageIds, userId, contactId] : [messageIds, userId]
+    );
+
+    const updatedMessageIds = updateResult.rows.map((row) => row.message_id);
+
+    // 🔥 SOCKET.IO INTEGRATION - Send read receipts
+    const socketManager = req.app.locals.socketManager;
+    if (socketManager && socketManager.io && contactId) {
+      try {
+        const conversationRoom = socketManager.getConversationRoom(
+          userId,
+          contactId
+        );
+
+        socketManager.io.to(conversationRoom).emit("messages_read", {
+          messageIds: updatedMessageIds,
+          readAt: new Date(),
+          readBy: userId,
+          contactId: contactId,
+        });
+
+        // Update unread count
+        socketManager.io.to(`user_${contactId}`).emit("unread_count_updated", {
+          contactId: userId,
+          count: 0,
+        });
+      } catch (socketError) {
+        console.error("❌ Socket.IO error in bulk read receipt:", socketError);
+      }
+    }
+
+    res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Messages marked as read",
+      updatedCount: updatedMessageIds.length,
+    });
+  } catch (error) {
+    console.error("❌ Error marking messages as read:", error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      error: "Failed to mark messages as read",
+    });
+  }
+});
+
+// GET /chat/messages/unread-count - Get unread message count for a contact
+router.get("/messages/unread-count", async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    const userId = req.user.id;
+
+    if (!contactId) {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        error: "Contact ID is required",
+      });
+    }
+
+    const result = await db.query(
+      `SELECT COUNT(*) as unread_count
+       FROM messages m
+       JOIN message_recipients mr ON mr.message_id = m.id
+       WHERE m.sender_id = $1 AND m.receiver_id = $2 
+       AND mr.is_read = false AND m.is_deleted = false`,
+      [contactId, userId]
+    );
+
+    const unreadCount = parseInt(result.rows[0].unread_count || 0);
+
+    res.status(200).json({
+      status: 200,
+      success: true,
+      unreadCount,
+      contactId,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching unread count:", error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      error: "Failed to fetch unread count",
     });
   }
 });
