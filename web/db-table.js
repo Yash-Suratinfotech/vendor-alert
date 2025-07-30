@@ -45,6 +45,7 @@ try {
       locked_until TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_notified_at TIMESTAMP DEFAULT NULL,
       last_active TIMESTAMP DEFAULT NOW(),
       is_active BOOLEAN DEFAULT true,
       is_verified BOOLEAN DEFAULT false,

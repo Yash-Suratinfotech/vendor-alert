@@ -26,7 +26,7 @@ export async function runNotifyScheduler() {
     const currentHour = now.getHours();
 
     const result = await db.query(`
-      SELECT id, shop_domain, notify_mode, notify_value 
+      SELECT id, shop_domain, notify_mode, notify_value, last_notified_at
       FROM users 
       WHERE user_type = 'store_owner'
         AND notify_mode IS NOT NULL 
@@ -35,17 +35,49 @@ export async function runNotifyScheduler() {
 
     const shopOwners = result.rows;
 
-    for (const { shop_domain, notify_mode, notify_value } of shopOwners) {
+    for (const {
+      shop_domain,
+      notify_mode,
+      notify_value,
+      last_notified_at,
+    } of shopOwners) {
       if (notify_mode === "specific_time") {
         if (notify_value === currentTime) {
-          await triggerNotification(shop_domain);
+          const lastNotifyTime = new Date(last_notified_at);
+          const now = new Date();
+          const lastDate = lastNotifyTime?.toDateString();
+          const nowDate = now.toDateString();
+
+          if (lastDate !== nowDate) {
+            const success = await triggerNotification(shop_domain);
+            if (success.success) {
+              await db.query(
+                `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
+                [shop_domain]
+              );
+            }
+          }
         }
       }
 
       if (notify_mode === "every_x_hours") {
         const interval = parseInt(notify_value);
-        if (interval && currentHour % interval === 0) {
-          await triggerNotification(shop_domain);
+        if (interval) {
+          const lastNotifyTime = new Date(last_notified_at);
+          const now = new Date();
+          const hoursSinceLast = lastNotifyTime
+            ? (now - lastNotifyTime) / (1000 * 60 * 60)
+            : Infinity;
+
+          if (hoursSinceLast >= interval) {
+            const success = await triggerNotification(shop_domain);
+            if (success.success) {
+              await db.query(
+                `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
+                [shop_domain]
+              );
+            }
+          }
         }
       }
     }
