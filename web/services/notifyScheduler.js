@@ -54,15 +54,43 @@ export async function runNotifyScheduler() {
 
       if (notify_mode === "every_x_hours") {
         const interval = parseInt(notify_value);
-        if (interval) {
-          const lastNotifyTime = new Date(last_notified_at);
+        if (interval && interval > 0) {
           const now = new Date();
-          const hoursSinceLast = lastNotifyTime
-            ? (now - lastNotifyTime) / (1000 * 60 * 60)
-            : Infinity;
+
+          // If last_notified_at is null, don't trigger notification immediately
+          // Wait for the first scheduled interval
+          if (!last_notified_at) {
+            await triggerNotification(shop_domain);
+            continue;
+          }
+
+          const lastNotifyTime = new Date(last_notified_at);
+
+          // Check if lastNotifyTime is valid
+          if (isNaN(lastNotifyTime.getTime())) {
+            console.log(
+              `⚠️ Invalid last_notified_at for ${shop_domain}, skipping`
+            );
+            continue;
+          }
+
+          const hoursSinceLast = (now - lastNotifyTime) / (1000 * 60 * 60);
 
           if (hoursSinceLast >= interval) {
+            console.log(
+              `⏰ Triggering notification for ${shop_domain} (${hoursSinceLast.toFixed(
+                2
+              )} 
+              hours since last notification)`
+            );
             await triggerNotification(shop_domain);
+          } else {
+            console.log(
+              `⏰ Skipping notification for ${shop_domain} (${hoursSinceLast.toFixed(
+                2
+              )} 
+              hours since last, interval: ${interval} hours)`
+            );
           }
         }
       }
@@ -112,6 +140,11 @@ async function triggerNotification(shopDomain) {
     const items = lineItemsResult.rows;
 
     if (items.length === 0) {
+      // ✅ Update user last notified datetime
+      await db.query(
+        `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
+        [shopDomain]
+      );
       console.log(`No pending notifications for ${shopDomain}`);
       return { success: true, message: "No pending notifications" };
     }
