@@ -47,7 +47,6 @@ export async function runNotifyScheduler() {
           const nowDate = now.toDateString();
 
           if (lastDate !== nowDate) {
-            console.log('✌️shop_domain --->', shop_domain);
             await triggerNotification(shop_domain);
           }
         }
