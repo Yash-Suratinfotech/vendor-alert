@@ -78,10 +78,10 @@ export default function HomePage() {
       tone: "warning",
     },
     {
-      title: "Debug & Sync",
-      description: "Test sync and debug tools",
+      title: "Settings",
+      description: "Update your profile details",
       icon: SettingsIcon,
-      href: "/debug",
+      href: "/settings",
       count: null,
       tone: "attention",
     },

@@ -23,8 +23,10 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "react-query";
 import { ViewIcon } from "@shopify/polaris-icons";
+import { useMutation, useQueryClient } from "react-query";
 
 export default function OrdersPage() {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -100,6 +102,35 @@ export default function OrdersPage() {
   useEffect(() => {
     getUserToken();
   }, [getUserToken]);
+
+  // Manual sync mutation
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/settings/manual-sync/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to start orders sync: ${errorText}`);
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["orders"]);
+      setToastMessage("Orders sync completed successfully!");
+      setShowToast(true);
+    },
+    onError: (error) => {
+      console.error("Orders sync error:", error);
+      setToastMessage(`Orders sync failed: ${error.message}`);
+      setShowToast(true);
+    },
+  });
 
   const handleVendorFilterChange = useCallback((value) => {
     setVendorFilter(value);
@@ -249,8 +280,12 @@ export default function OrdersPage() {
     <Frame>
       <Page fullWidth>
         <TitleBar title="Orders">
-          <button variant="primary" onClick={() => refetch()}>
-            Refresh
+          <button
+            variant="primary"
+            loading={syncMutation.isLoading}
+            onClick={() => syncMutation.mutate()}
+          >
+            Sync Orders
           </button>
         </TitleBar>
         <Layout>
@@ -342,7 +377,7 @@ export default function OrdersPage() {
                     onClick={() => {
                       if (token) {
                         window.open(
-                          `http://localhost:3000/verify-user?token=${token}`,
+                          `https://vendor-alert-webapp.vercel.app/verify-user?token=${token}`,
                           "_blank"
                         );
                       } else {

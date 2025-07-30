@@ -151,7 +151,9 @@ router.put("/profile", async (req, res) => {
 // PUT /api/settings/manual-sync/:type - Manual sync updated for order-based approach
 router.post("/manual-sync/:type", async (req, res) => {
   try {
-    const shopDomain = res.locals.shopify.session.shop;
+    const session = res.locals.shopify.session;
+    const shop = session.shop;
+
     const { type } = req.params;
     if (!shop) {
       return res
@@ -163,7 +165,7 @@ router.post("/manual-sync/:type", async (req, res) => {
 
     switch (type) {
       case "orders":
-        // Only sync orders (which creates products and vendors automatically)
+        // Only sync orders
         result = await dataSyncService.syncAllOrders(session);
         break;
       default:
@@ -174,6 +176,7 @@ router.post("/manual-sync/:type", async (req, res) => {
     }
 
     res.status(200).json({
+      status: 200,
       success: true,
       message: `Manual ${type} sync completed`,
       result,
@@ -198,7 +201,6 @@ router.get("/status", async (req, res) => {
       `
       SELECT 
         initial_sync_completed,
-        (SELECT COUNT(*) FROM products WHERE shop_domain = $1) as product_count,
         (SELECT COUNT(*) FROM orders WHERE shop_domain = $1) as order_count,
         (SELECT COUNT(*) FROM vendors WHERE shop_domain = $1) as vendor_count,
         (SELECT COUNT(*) FROM sync_logs WHERE shop_domain = $1 AND status = 'running') as running_syncs
@@ -209,11 +211,11 @@ router.get("/status", async (req, res) => {
 
     const stats = result.rows[0] || {};
 
-    res.json({
+    res.status(200).json({
+      status: 200,
       success: true,
       initialSyncCompleted: stats.initial_sync_completed || false,
       counts: {
-        products: parseInt(stats.product_count) || 0,
         orders: parseInt(stats.order_count) || 0,
         vendors: parseInt(stats.vendor_count) || 0,
       },

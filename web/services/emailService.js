@@ -23,7 +23,7 @@ const transporter = nodemailer.createTransport({
 
 export const sendVerificationEmail = async (email, otp) => {
   const mailOptions = {
-    from: process.env.SMTP_FROM || "noreply@vendoralert.com",
+    from: "noreply@vendoralert.com",
     to: email,
     subject: "Verify Your Email - Vendor Alert",
     html: `
@@ -46,7 +46,7 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
-    from: process.env.SMTP_FROM || "noreply@vendoralert.com",
+    from: "noreply@vendoralert.com",
     to: email,
     subject: "Password Reset Request - Vendor Alert",
     html: `

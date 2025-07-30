@@ -26,9 +26,6 @@ export default function App() {
             <a href="/settings" rel="setting">
               Settings
             </a>
-            <a href="/debug" rel="Debug & Sync">
-              Debug & Sync
-            </a>
           </NavMenu>
           <Routes pages={pages} />
           <div style={{ height: "24px" }}></div>

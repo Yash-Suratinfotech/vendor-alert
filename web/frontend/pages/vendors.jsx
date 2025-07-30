@@ -338,7 +338,7 @@ export default function VendorsPage() {
                     onClick={() => {
                       if (token) {
                         window.open(
-                          `http://localhost:3000/verify-user?token=${token}`,
+                          `https://vendor-alert-webapp.vercel.app/verify-user?token=${token}`,
                           "_blank"
                         );
                       } else {
