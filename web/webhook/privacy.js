@@ -12,7 +12,7 @@ export default {
    */
   CUSTOMERS_DATA_REQUEST: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/privacy/customers-data-request",
+    callbackUrl: "/webhooks/privacy/customers-data-request",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
       console.log(`📋 Customer data request received for shop: ${shop}`);
@@ -48,7 +48,7 @@ export default {
    */
   CUSTOMERS_REDACT: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/privacy/customers-redact",
+    callbackUrl: "/webhooks/privacy/customers-redact",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
       console.log(
@@ -85,7 +85,7 @@ export default {
    */
   SHOP_REDACT: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/privacy/shop-redact",
+    callbackUrl: "/webhooks/privacy/shop-redact",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
       console.log(`🗑️ Shop redaction request received for shop: ${shop}`);

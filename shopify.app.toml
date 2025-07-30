@@ -15,30 +15,24 @@ api_version = "2025-07"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "/api/webhooks/app-uninstalled"
+  uri = "/webhooks/app-uninstalled"
 
   [[webhooks.subscriptions]]
   topics = [
-  "orders/cancelled",
-  "orders/create",
-  "orders/fulfilled",
-  "orders/paid",
-  "orders/updated"
-]
-  uri = "/api/webhooks/orders"
+    "orders/cancelled",
+    "orders/create",
+    "orders/updated"
+  ]
+  uri = "/webhooks/orders"
   include_fields = [
-  "id",
-  "name",
-  "line_items",
-  "financial_status",
-  "fulfillment_status",
-  "created_at",
-  "updated_at"
-]
-
-  [[webhooks.subscriptions]]
-  topics = [ "products/create", "products/delete", "products/update" ]
-  uri = "/api/webhooks/products"
+    "id",
+    "name",
+    "line_items",
+    "financial_status",
+    "fulfillment_status",
+    "created_at",
+    "updated_at"
+  ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes

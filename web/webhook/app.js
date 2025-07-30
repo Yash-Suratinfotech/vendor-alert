@@ -7,7 +7,7 @@ export default {
   // App uninstall webhook
   APP_UNINSTALLED: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/app-uninstalled",
+    callbackUrl: "/webhooks/app-uninstalled",
     callback: async (topic, shop, body, webhookId) => {
       try {
         console.log(`🗑️ App uninstalled webhook received for shop: ${shop}`);

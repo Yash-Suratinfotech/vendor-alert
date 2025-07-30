@@ -156,7 +156,6 @@ export default function VendorsPage() {
 
   const getVendorStats = (vendor) => {
     return {
-      products: vendor.stats.productCount || 0,
       orders: vendor.stats.orderCount || 0,
     };
   };

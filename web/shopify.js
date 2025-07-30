@@ -40,7 +40,7 @@ const shopify = shopifyApp({
     callbackPath: "/api/auth/callback",
   },
   webhooks: {
-    path: "/api/webhooks",
+    path: "/webhooks",
   },
   // Use HOST from environment
   host: process.env.HOST,

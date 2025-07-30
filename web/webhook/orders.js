@@ -7,7 +7,7 @@ export default {
   // Order webhooks
   ORDERS_CREATE: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/orders",
+    callbackUrl: "/webhooks/orders",
     callback: async (topic, shop, body, webhookId) => {
       try {
         const orderData = JSON.parse(body);
@@ -25,7 +25,7 @@ export default {
 
   ORDERS_UPDATED: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/orders",
+    callbackUrl: "/webhooks/orders",
     callback: async (topic, shop, body, webhookId) => {
       try {
         const orderData = JSON.parse(body);
@@ -43,7 +43,7 @@ export default {
 
   ORDERS_PAID: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/orders",
+    callbackUrl: "/webhooks/orders",
     callback: async (topic, shop, body, webhookId) => {
       try {
         const orderData = JSON.parse(body);
@@ -57,7 +57,7 @@ export default {
 
   ORDERS_CANCELLED: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/orders",
+    callbackUrl: "/webhooks/orders",
     callback: async (topic, shop, body, webhookId) => {
       try {
         const orderData = JSON.parse(body);
@@ -75,7 +75,7 @@ export default {
 
   ORDERS_FULFILLED: {
     deliveryMethod: DeliveryMethod.Http,
-    callbackUrl: "/api/webhooks/orders",
+    callbackUrl: "/webhooks/orders",
     callback: async (topic, shop, body, webhookId) => {
       try {
         const orderData = JSON.parse(body);

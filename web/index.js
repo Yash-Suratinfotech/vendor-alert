@@ -112,8 +112,10 @@ cron.schedule("*/1 * * * *", async () => {
 // Parse JSON for API routes
 app.use(express.json());
 
-// Chat routes - NO Shopify authentication required (they have their own JWT auth)
+// NO Shopify authentication required (they have their own JWT authentication)
+
 app.use("/chat", chatRouter);
+app.use("/webhooks", webhookRouter);
 
 // API routes - require Shopify authentication
 app.use("/api/*", shopify.validateAuthenticatedSession());
@@ -121,7 +123,6 @@ app.use("/api/*", shopify.validateAuthenticatedSession());
 // Mount API routes that require Shopify authentication
 app.use("/api/settings", settingsApi);
 app.use("/api/vendor", vendorRouter);
-app.use("/api/webhooks", webhookRouter);
 app.use("/api/orders", ordersRouter);
 
 // Make socketManager available to routes
@@ -138,6 +139,7 @@ app.use("/*", (req, res, next) => {
       req.path.startsWith('/health') || 
       req.path.startsWith('/socket-status') ||
       req.path.startsWith('/chat') ||
+      req.path.startsWith('/webhooks') ||
       req.path.startsWith('/api')) {
     return res.status(404).json({ error: "Route not found" });
   }

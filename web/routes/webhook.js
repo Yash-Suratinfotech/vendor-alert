@@ -7,12 +7,14 @@ const router = express.Router();
 
 // Middleware to verify webhook authenticity (simplified for now)
 const verifyWebhook = (req, res, next) => {
+  console.log("✌️req --->", req);
   // Add proper webhook verification logic here if needed
   next();
 };
 
 // Order webhooks - Main focus since we only care about order-based products
 router.post("/orders", verifyWebhook, async (req, res) => {
+  console.log("✌️req --->", req);
   try {
     const shop = req.headers["x-shopify-shop-domain"];
     const topic = req.headers["x-shopify-topic"];
@@ -221,7 +223,7 @@ router.post("/app-uninstalled", verifyWebhook, async (req, res) => {
   );
   const client = await db.getClient();
   await client.query("BEGIN");
-  
+
   // Clean up all shop data in correct order (respecting foreign keys)
   // This removes all business data, not personal customer data
   await client.query(
