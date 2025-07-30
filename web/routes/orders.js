@@ -11,9 +11,8 @@ router.get("/", async (req, res) => {
     const shopDomain = session.shop;
 
     // Pagination
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 25;
-    const offset = (page - 1) * limit;
+    const { page = 1, limit = 25, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Filters
     const vendor = req.query.vendor;
@@ -39,6 +38,25 @@ router.get("/", async (req, res) => {
       paramCount++;
       whereConditions.push(`o.notification = $${paramCount}`);
       queryParams.push(notification === "true");
+    }
+
+    if (search) {
+      paramCount++;
+      whereConditions.push(`
+        (
+          o.name ILIKE $${paramCount}
+          OR EXISTS (
+            SELECT 1 FROM order_line_items oli
+            JOIN products p ON p.id = oli.product_id
+            WHERE oli.order_id = o.id
+              AND (
+                p.title ILIKE $${paramCount}
+                OR p.vendor_name ILIKE $${paramCount}
+              )
+          )
+        )
+      `);
+      queryParams.push(`%${search}%`);
     }
 
     const whereClause = whereConditions.join(" AND ");

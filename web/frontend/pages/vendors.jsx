@@ -266,14 +266,6 @@ export default function VendorsPage() {
                       ? "Try adjusting your search criteria."
                       : "Vendors will appear automatically when products are synced from your store."}
                   </p>
-                  {!searchValue && (
-                    <Button
-                      primary
-                      onClick={() => (window.location.href = "/debug")}
-                    >
-                      Sync Data
-                    </Button>
-                  )}
                 </EmptyState>
               ) : (
                 <>

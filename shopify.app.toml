@@ -3,7 +3,7 @@
 client_id = "74db907f6dd1046c885f946d7c55e5bc"
 name = "Vendor Alert"
 handle = "vendor-alert"
-application_url = "https://town-mailman-selection-hat.trycloudflare.com"
+application_url = "https://regardless-trains-concentrations-tie.trycloudflare.com"
 embedded = true
 
 [build]
@@ -39,7 +39,7 @@ api_version = "2025-07"
 scopes = "read_customers,read_orders,read_products,write_products"
 
 [auth]
-redirect_urls = ["https://town-mailman-selection-hat.trycloudflare.com/auth/callback", "https://town-mailman-selection-hat.trycloudflare.com/auth/shopify/callback", "https://town-mailman-selection-hat.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://regardless-trains-concentrations-tie.trycloudflare.com/auth/callback", "https://regardless-trains-concentrations-tie.trycloudflare.com/auth/shopify/callback", "https://regardless-trains-concentrations-tie.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

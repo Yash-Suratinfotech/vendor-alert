@@ -47,6 +47,7 @@ export async function runNotifyScheduler() {
           const nowDate = now.toDateString();
 
           if (lastDate !== nowDate) {
+            console.log('✌️shop_domain --->', shop_domain);
             await triggerNotification(shop_domain);
           }
         }
@@ -57,8 +58,6 @@ export async function runNotifyScheduler() {
         if (interval && interval > 0) {
           const now = new Date();
 
-          // If last_notified_at is null, don't trigger notification immediately
-          // Wait for the first scheduled interval
           if (!last_notified_at) {
             await triggerNotification(shop_domain);
             continue;
@@ -80,17 +79,9 @@ export async function runNotifyScheduler() {
             console.log(
               `⏰ Triggering notification for ${shop_domain} (${hoursSinceLast.toFixed(
                 2
-              )} 
-              hours since last notification)`
+              )} hours since last notification)`
             );
             await triggerNotification(shop_domain);
-          } else {
-            console.log(
-              `⏰ Skipping notification for ${shop_domain} (${hoursSinceLast.toFixed(
-                2
-              )} 
-              hours since last, interval: ${interval} hours)`
-            );
           }
         }
       }

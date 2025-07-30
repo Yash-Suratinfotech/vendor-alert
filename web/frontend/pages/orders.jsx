@@ -20,15 +20,17 @@ import {
   Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "react-query";
 import { ViewIcon } from "@shopify/polaris-icons";
 import { useMutation, useQueryClient } from "react-query";
+import { useDebounce } from "../hooks/useDebounce";
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
+  const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -36,6 +38,9 @@ export default function OrdersPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const itemsPerPage = 25;
+  
+  // Debounce search value to prevent excessive API calls
+  const debouncedSearchValue = useDebounce(searchValue, 300);
 
   // Fetch orders data with enhanced debugging
   const {
@@ -44,12 +49,13 @@ export default function OrdersPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["orders", vendorFilter, currentPage],
+    queryKey: ["orders", vendorFilter, debouncedSearchValue, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage,
         limit: itemsPerPage,
         ...(vendorFilter && { vendor: vendorFilter }),
+        ...(debouncedSearchValue && debouncedSearchValue.trim() && { search: debouncedSearchValue.trim() }),
       });
 
       console.log("🔍 Fetching orders with params:", params.toString());
@@ -66,6 +72,8 @@ export default function OrdersPage() {
     },
     refetchOnWindowFocus: false,
     keepPreviousData: true,
+    staleTime: 30000, // Cache for 30 seconds
+    cacheTime: 300000, // Keep in cache for 5 minutes
     onError: (error) => {
       console.error("❌ Orders query error:", error);
     },
@@ -137,8 +145,14 @@ export default function OrdersPage() {
     setCurrentPage(1);
   }, []);
 
+  const handleSearchChange = useCallback((value) => {
+    setSearchValue(value);
+    setCurrentPage(1);
+  }, []);
+
   const handleFiltersRemove = useCallback(() => {
     setVendorFilter("");
+    setSearchValue("");
     setCurrentPage(1);
   }, []);
 
@@ -188,9 +202,16 @@ export default function OrdersPage() {
       label: `Vendor: ${vendorFilter}`,
       onRemove: () => setVendorFilter(""),
     });
+  if (searchValue)
+    appliedFilters.push({
+      key: "search",
+      label: `Search: ${searchValue}`,
+      onRemove: () => setSearchValue(""),
+    });
 
   const filters = (
     <Filters
+      queryValue={searchValue}
       filters={[
         {
           key: "vendor",
@@ -207,7 +228,10 @@ export default function OrdersPage() {
         },
       ]}
       appliedFilters={appliedFilters}
+      onQueryChange={handleSearchChange}
+      onQueryClear={() => setSearchValue("")}
       onClearAll={handleFiltersRemove}
+      queryPlaceholder="Search orders..."
     />
   );
 
@@ -237,6 +261,9 @@ export default function OrdersPage() {
           {appliedFilters.length > 0
             ? appliedFilters.map((f) => f.label).join(", ")
             : "None"}
+        </Text>
+        <Text>
+          <strong>Search Value:</strong> {searchValue || "None"}
         </Text>
       </BlockStack>
     </Banner>
@@ -307,20 +334,21 @@ export default function OrdersPage() {
                   heading="No orders found"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
-                  <p>
-                    {appliedFilters.length > 0
-                      ? "Try adjusting your filter criteria or check if orders exist in your store."
+                  <p style={{ marginBottom: "20px" }}>
+                    {searchValue || vendorFilter
+                      ? "Try adjusting your search or filter criteria."
                       : "No orders have been synced yet. Orders will appear automatically when they are created in your store."}
                   </p>
-                  <InlineStack gap="300">
-                    {appliedFilters.length > 0 && (
+                  <InlineStack align="center" gap="300">
+                    {(searchValue || vendorFilter) && (
                       <Button onClick={handleFiltersRemove}>
                         Clear Filters
                       </Button>
                     )}
                     <Button
                       primary
-                      onClick={() => (window.location.href = "/debug")}
+                      loading={syncMutation.isLoading}
+                      onClick={() => syncMutation.mutate()}
                     >
                       Sync Data
                     </Button>
