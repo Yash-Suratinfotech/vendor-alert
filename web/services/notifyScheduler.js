@@ -21,9 +21,7 @@ function getCurrentTime() {
 
 export async function runNotifyScheduler() {
   try {
-    const now = new Date();
     const currentTime = getCurrentTime();
-    const currentHour = now.getHours();
 
     const result = await db.query(`
       SELECT id, shop_domain, notify_mode, notify_value, last_notified_at
@@ -49,13 +47,7 @@ export async function runNotifyScheduler() {
           const nowDate = now.toDateString();
 
           if (lastDate !== nowDate) {
-            const success = await triggerNotification(shop_domain);
-            if (success.success) {
-              await db.query(
-                `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
-                [shop_domain]
-              );
-            }
+            await triggerNotification(shop_domain);
           }
         }
       }
@@ -70,13 +62,7 @@ export async function runNotifyScheduler() {
             : Infinity;
 
           if (hoursSinceLast >= interval) {
-            const success = await triggerNotification(shop_domain);
-            if (success.success) {
-              await db.query(
-                `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
-                [shop_domain]
-              );
-            }
+            await triggerNotification(shop_domain);
           }
         }
       }
@@ -261,6 +247,12 @@ async function triggerNotification(shopDomain) {
         [shopDomain]
       );
     }
+
+    // ✅ Update user last notified datetime
+    await db.query(
+      `UPDATE users SET last_notified_at = NOW() WHERE shop_domain = $1`,
+      [shopDomain]
+    );
 
     console.log(`✅ Notification process completed for ${shopDomain}`);
     console.log(`📊 Results:`, results);
