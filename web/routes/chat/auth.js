@@ -19,13 +19,12 @@ router.post("/register", async (req, res) => {
   const client = await db.getClient();
 
   try {
-    const { email, password } = req.body;
+    const { email, password, username, phone } = req.body;
 
-    // Validation
-    if (!email || !password) {
+    if (!email || !password || !username || !phone) {
       return res.status(400).json({
         success: false,
-        error: "Email, password, and user type are required",
+        error: "Email, password, username, and phone are required",
       });
     }
 
@@ -33,6 +32,14 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Password must be at least 6 characters long",
+      });
+    }
+
+    const phoneRegex = /^\+?[\d\s\-\(\)]{10,15}$/;
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        error: "Please enter a valid phone number",
       });
     }
 
@@ -74,17 +81,17 @@ router.post("/register", async (req, res) => {
     }
 
     // Create user
-    const username = email.split("@")[0].toLowerCase();
     const userResult = await client.query(
       `INSERT INTO users (
-        username, email, password_hash, user_type, 
+        username, email, password_hash, phone, user_type, 
         otp, otp_expires_at, color, is_active, is_verified
-      ) VALUES ($1, $2, $3, 'vendor', $4, $5, $6, true, true)
-      RETURNING id, username, email, user_type`,
+      ) VALUES ($1, $2, $3, $4, 'vendor', $5, $6, $7, true, true)
+      RETURNING id, username, email, phone, user_type`,
       [
         username,
         email.toLowerCase(),
         hashedPassword,
+        phone,
         otp,
         otpExpiresAt,
         getRandomGradient(),
@@ -141,6 +148,8 @@ router.post("/register", async (req, res) => {
         id: user.id,
         email: user.email,
         userType: "vendor",
+        username: user.username,
+        phone: user.phone,
       },
     });
   } catch (error) {
