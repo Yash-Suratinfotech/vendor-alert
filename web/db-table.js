@@ -90,6 +90,7 @@ try {
       name VARCHAR(50) NOT NULL,
       notification BOOLEAN DEFAULT FALSE,
       shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
+      cancelled_at TIMESTAMP DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       shopify_created_at TIMESTAMP,

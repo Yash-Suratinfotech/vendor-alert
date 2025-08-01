@@ -20,7 +20,7 @@ import {
   Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "react-query";
 import { ViewIcon } from "@shopify/polaris-icons";
 import { useMutation, useQueryClient } from "react-query";
@@ -30,6 +30,7 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active"); // 'all', 'active', 'cancelled'
   const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -38,7 +39,7 @@ export default function OrdersPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const itemsPerPage = 25;
-  
+
   // Debounce search value to prevent excessive API calls
   const debouncedSearchValue = useDebounce(searchValue, 300);
 
@@ -49,13 +50,26 @@ export default function OrdersPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["orders", vendorFilter, debouncedSearchValue, currentPage],
+    queryKey: [
+      "orders",
+      vendorFilter,
+      statusFilter,
+      debouncedSearchValue,
+      currentPage,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage,
         limit: itemsPerPage,
         ...(vendorFilter && { vendor: vendorFilter }),
-        ...(debouncedSearchValue && debouncedSearchValue.trim() && { search: debouncedSearchValue.trim() }),
+        ...(debouncedSearchValue &&
+          debouncedSearchValue.trim() && {
+            search: debouncedSearchValue.trim(),
+          }),
+        includeCancelled:
+          statusFilter === "all" || statusFilter === "cancelled"
+            ? "true"
+            : "false",
       });
 
       console.log("🔍 Fetching orders with params:", params.toString());
@@ -68,6 +82,16 @@ export default function OrdersPage() {
       }
 
       const data = await response.json();
+
+      // Client-side filtering for cancelled status
+      if (statusFilter === "cancelled") {
+        data.orders = data.orders.filter((order) => order.isCancelled);
+        data.pagination.total = data.orders.length;
+      } else if (statusFilter === "active") {
+        data.orders = data.orders.filter((order) => !order.isCancelled);
+        data.pagination.total = data.orders.length;
+      }
+
       return data;
     },
     refetchOnWindowFocus: false,
@@ -145,6 +169,11 @@ export default function OrdersPage() {
     setCurrentPage(1);
   }, []);
 
+  const handleStatusFilterChange = useCallback((value) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  }, []);
+
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value);
     setCurrentPage(1);
@@ -152,6 +181,7 @@ export default function OrdersPage() {
 
   const handleFiltersRemove = useCallback(() => {
     setVendorFilter("");
+    setStatusFilter("active");
     setSearchValue("");
     setCurrentPage(1);
   }, []);
@@ -161,20 +191,32 @@ export default function OrdersPage() {
     setIsOrderModalOpen(true);
   }, []);
 
-  // Enhanced table data preparation
+  // Enhanced table data preparation with cancelled status
   const tableData =
     ordersData?.orders?.map((order) => [
-      <Text variant="bodyMd" fontWeight="semibold">
-        {order.name}
-      </Text>,
+      <InlineStack gap="200">
+        <Text variant="bodyMd" fontWeight="semibold">
+          {order.name}
+        </Text>
+        {order.isCancelled && <Badge tone="critical">Cancelled</Badge>}
+      </InlineStack>,
       order.notification ? (
         <Badge tone="success">Notified</Badge>
+      ) : order.isCancelled ? (
+        <Badge tone="neutral">N/A</Badge>
       ) : (
         <Badge tone="warning">Pending</Badge>
       ),
       new Date(
         order.shopify_created_at || order.createdAt
       ).toLocaleDateString(),
+      order.cancelledAt ? (
+        <Text tone="subdued">
+          {new Date(order.cancelledAt).toLocaleDateString()}
+        </Text>
+      ) : (
+        <Text>—</Text>
+      ),
       <Button
         size="slim"
         icon={ViewIcon}
@@ -184,7 +226,13 @@ export default function OrdersPage() {
       </Button>,
     ]) || [];
 
-  const tableHeaders = ["Order Number", "Notification", "Date", "Actions"];
+  const tableHeaders = [
+    "Order Number",
+    "Notification",
+    "Created",
+    "Cancelled",
+    "Actions",
+  ];
 
   // Filter options
   const vendorOptions = [
@@ -195,12 +243,24 @@ export default function OrdersPage() {
     })) || []),
   ];
 
+  const statusOptions = [
+    { label: "Active orders", value: "active" },
+    { label: "Cancelled orders", value: "cancelled" },
+    { label: "All orders", value: "all" },
+  ];
+
   const appliedFilters = [];
   if (vendorFilter)
     appliedFilters.push({
       key: "vendor",
       label: `Vendor: ${vendorFilter}`,
       onRemove: () => setVendorFilter(""),
+    });
+  if (statusFilter !== "active")
+    appliedFilters.push({
+      key: "status",
+      label: `Status: ${statusFilter === "cancelled" ? "Cancelled" : "All"}`,
+      onRemove: () => setStatusFilter("active"),
     });
   if (searchValue)
     appliedFilters.push({
@@ -226,6 +286,19 @@ export default function OrdersPage() {
             />
           ),
         },
+        {
+          key: "status",
+          label: "Order Status",
+          filter: (
+            <Select
+              label="Order Status"
+              labelHidden
+              options={statusOptions}
+              value={statusFilter}
+              onChange={handleStatusFilterChange}
+            />
+          ),
+        },
       ]}
       appliedFilters={appliedFilters}
       onQueryChange={handleSearchChange}
@@ -233,6 +306,27 @@ export default function OrdersPage() {
       onClearAll={handleFiltersRemove}
       queryPlaceholder="Search orders..."
     />
+  );
+
+  // Stats banner
+  const orderStats = ordersData && (
+    <div style={{ marginBottom: "1rem" }}>
+      <InlineStack gap="400">
+        <Badge tone="info">
+          Total: {ordersData.pagination?.total || 0} orders
+        </Badge>
+        {statusFilter === "all" && ordersData.orders && (
+          <>
+            <Badge tone="success">
+              Active: {ordersData.orders.filter((o) => !o.isCancelled).length}
+            </Badge>
+            <Badge tone="critical">
+              Cancelled: {ordersData.orders.filter((o) => o.isCancelled).length}
+            </Badge>
+          </>
+        )}
+      </InlineStack>
+    </div>
   );
 
   // Debug info for investigating single order issue
@@ -264,6 +358,9 @@ export default function OrdersPage() {
         </Text>
         <Text>
           <strong>Search Value:</strong> {searchValue || "None"}
+        </Text>
+        <Text>
+          <strong>Status Filter:</strong> {statusFilter}
         </Text>
       </BlockStack>
     </Banner>
@@ -321,6 +418,7 @@ export default function OrdersPage() {
 
             <Card>
               <div style={{ marginBottom: "1rem" }}>{filters}</div>
+              {orderStats}
 
               {isLoading ? (
                 <div style={{ textAlign: "center", padding: "2rem" }}>
@@ -331,16 +429,22 @@ export default function OrdersPage() {
                 </div>
               ) : tableData.length === 0 ? (
                 <EmptyState
-                  heading="No orders found"
+                  heading={
+                    statusFilter === "cancelled"
+                      ? "No cancelled orders found"
+                      : "No orders found"
+                  }
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
                   <p style={{ marginBottom: "20px" }}>
-                    {searchValue || vendorFilter
+                    {searchValue || vendorFilter || statusFilter !== "active"
                       ? "Try adjusting your search or filter criteria."
                       : "No orders have been synced yet. Orders will appear automatically when they are created in your store."}
                   </p>
                   <InlineStack align="center" gap="300">
-                    {(searchValue || vendorFilter) && (
+                    {(searchValue ||
+                      vendorFilter ||
+                      statusFilter !== "active") && (
                       <Button onClick={handleFiltersRemove}>
                         Clear Filters
                       </Button>
@@ -357,7 +461,13 @@ export default function OrdersPage() {
               ) : (
                 <>
                   <DataTable
-                    columnContentTypes={["text", "text", "text", "text"]}
+                    columnContentTypes={[
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                    ]}
                     headings={tableHeaders}
                     rows={tableData}
                     hoverable
@@ -454,17 +564,29 @@ export default function OrdersPage() {
                       </InlineStack>
                       <InlineStack align="space-between">
                         <Text variant="bodyMd" fontWeight="medium">
+                          Status:
+                        </Text>
+                        {selectedOrder.isCancelled ? (
+                          <Badge tone="critical">Cancelled</Badge>
+                        ) : (
+                          <Badge tone="success">Active</Badge>
+                        )}
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" fontWeight="medium">
                           Notification:
                         </Text>
                         {selectedOrder.notification ? (
                           <Badge tone="success">Notified</Badge>
+                        ) : selectedOrder.isCancelled ? (
+                          <Badge tone="neutral">N/A</Badge>
                         ) : (
                           <Badge tone="warning">Pending</Badge>
                         )}
                       </InlineStack>
                       <InlineStack align="space-between">
                         <Text variant="bodyMd" fontWeight="medium">
-                          Date:
+                          Created:
                         </Text>
                         <Text>
                           {new Date(
@@ -473,6 +595,18 @@ export default function OrdersPage() {
                           ).toLocaleString()}
                         </Text>
                       </InlineStack>
+                      {selectedOrder.cancelledAt && (
+                        <InlineStack align="space-between">
+                          <Text variant="bodyMd" fontWeight="medium">
+                            Cancelled:
+                          </Text>
+                          <Text tone="subdued">
+                            {new Date(
+                              selectedOrder.cancelledAt
+                            ).toLocaleString()}
+                          </Text>
+                        </InlineStack>
+                      )}
                     </BlockStack>
                   </Card>
                 </Layout.Section>
@@ -498,6 +632,8 @@ export default function OrdersPage() {
                                   Notification:{"  "}
                                   {item.notification ? (
                                     <Badge tone="success">Notified</Badge>
+                                  ) : selectedOrder.isCancelled ? (
+                                    <Badge tone="neutral">N/A</Badge>
                                   ) : (
                                     <Badge tone="warning">Pending</Badge>
                                   )}
@@ -523,6 +659,7 @@ export default function OrdersPage() {
             )}
           </Modal.Section>
         </Modal>
+        {toastMarkup}
       </Page>
     </Frame>
   );

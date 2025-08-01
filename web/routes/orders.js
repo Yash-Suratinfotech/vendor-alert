@@ -11,7 +11,12 @@ router.get("/", async (req, res) => {
     const shopDomain = session.shop;
 
     // Pagination
-    const { page = 1, limit = 25, search } = req.query;
+    const {
+      page = 1,
+      limit = 25,
+      search,
+      includeCancelled = false,
+    } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Filters
@@ -21,6 +26,11 @@ router.get("/", async (req, res) => {
     let whereConditions = ["o.shop_domain = $1"];
     let queryParams = [shopDomain];
     let paramCount = 1;
+
+    // By default, exclude cancelled orders unless specifically requested
+    if (includeCancelled !== "true") {
+      whereConditions.push("o.cancelled_at IS NULL");
+    }
 
     if (vendor) {
       paramCount++;
@@ -110,6 +120,8 @@ router.get("/", async (req, res) => {
       updatedAt: order.updated_at,
       shopifyCreatedAt: order.shopify_created_at,
       shopifyUpdatedAt: order.shopify_updated_at,
+      cancelledAt: order.cancelled_at,
+      isCancelled: !!order.cancelled_at,
     }));
 
     res.json({

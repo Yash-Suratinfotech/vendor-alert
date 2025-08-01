@@ -104,6 +104,7 @@ async function triggerNotification(shopDomain) {
     const storeOwnerId = storeOwnerResult.rows[0].id;
 
     // Get unnotified order line items grouped by vendor
+    // IMPORTANT: Now excluding cancelled orders with cancelled_at IS NULL
     const lineItemsResult = await db.query(
       `SELECT 
           oli.id as line_item_id,
@@ -122,7 +123,9 @@ async function triggerNotification(shopDomain) {
         JOIN products p ON p.id = oli.product_id
         JOIN vendors v ON p.vendor_id = v.id
         JOIN users u ON u.email = v.email AND u.user_type = 'vendor'
-        WHERE oli.notification = false AND oli.shop_domain = $1
+        WHERE oli.notification = false 
+          AND oli.shop_domain = $1
+          AND o.cancelled_at IS NULL  -- Skip cancelled orders
         ORDER BY v.name, p.title`,
       [shopDomain]
     );
@@ -260,6 +263,7 @@ async function triggerNotification(shopDomain) {
           SELECT o.id
           FROM orders o
           WHERE o.shop_domain = $1
+            AND o.cancelled_at IS NULL
             AND NOT EXISTS (
               SELECT 1
               FROM order_line_items oli

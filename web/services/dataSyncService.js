@@ -233,6 +233,7 @@ class DataSyncService {
                 node {
                   id
                   name
+                  cancelledAt
                   lineItems(first: 100) {
                     edges {
                       node {
@@ -310,13 +311,14 @@ class DataSyncService {
         `
         INSERT INTO orders (
           shopify_order_id, name, shop_domain,
-          shopify_created_at, shopify_updated_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, NOW())
+          shopify_created_at, shopify_updated_at, updated_at, cancelled_at
+        ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
         ON CONFLICT (shopify_order_id) 
         DO UPDATE SET 
           name = EXCLUDED.name,
           shopify_updated_at = EXCLUDED.shopify_updated_at,
           updated_at = NOW()
+          cancelled_at = EXCLUDED.cancelled_at
         RETURNING id
       `,
         [
@@ -325,6 +327,7 @@ class DataSyncService {
           shopDomain,
           orderData.createdAt,
           orderData.updatedAt,
+          orderData.cancelledAt,
         ]
       );
 
@@ -496,6 +499,7 @@ class DataSyncService {
     const transformedData = {
       id: `gid://shopify/Order/${orderData.id}`,
       name: orderData.name,
+      cancelledAt: orderData.cancelled_at || orderData.cancelledAt || null,
       lineItems: {
         edges: orderData.line_items.map((item) => ({
           node: {
