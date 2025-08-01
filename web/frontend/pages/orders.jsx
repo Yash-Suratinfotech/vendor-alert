@@ -30,7 +30,7 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active"); // 'all', 'active', 'cancelled'
+  const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'active', 'cancelled'
   const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState(null);
