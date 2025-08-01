@@ -633,7 +633,7 @@ class SocketManager {
       const enrichedMessage = await this.sendSystemMessage(
         storeOwnerId,
         vendorUserId,
-        "New order notification",
+        "Order notification",
         "order_notification"
       );
 
