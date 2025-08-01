@@ -297,7 +297,6 @@ class DataSyncService {
    * Sync individual order and create products/vendors as needed
    */
   async syncOrderWithProducts(orderData, shopDomain) {
-    console.log("✌️orderData --->", orderData);
     const client = await db.getClient();
 
     try {
