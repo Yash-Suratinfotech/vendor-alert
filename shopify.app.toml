@@ -3,7 +3,7 @@
 client_id = "74db907f6dd1046c885f946d7c55e5bc"
 name = "Vendor Alert"
 handle = "vendor-alert"
-application_url = "https://tiger-ana-ending-stripes.trycloudflare.com"
+application_url = "https://shapes-cylinder-detector-vessels.trycloudflare.com"
 embedded = true
 
 [build]
@@ -39,7 +39,7 @@ api_version = "2025-07"
 scopes = "read_customers,read_orders,read_products,write_products"
 
 [auth]
-redirect_urls = ["https://tiger-ana-ending-stripes.trycloudflare.com/auth/callback", "https://tiger-ana-ending-stripes.trycloudflare.com/auth/shopify/callback", "https://tiger-ana-ending-stripes.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://shapes-cylinder-detector-vessels.trycloudflare.com/auth/callback", "https://shapes-cylinder-detector-vessels.trycloudflare.com/auth/shopify/callback", "https://shapes-cylinder-detector-vessels.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

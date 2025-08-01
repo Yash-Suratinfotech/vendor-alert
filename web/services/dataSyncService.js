@@ -297,6 +297,7 @@ class DataSyncService {
    * Sync individual order and create products/vendors as needed
    */
   async syncOrderWithProducts(orderData, shopDomain) {
+    console.log("✌️orderData --->", orderData);
     const client = await db.getClient();
 
     try {
@@ -317,7 +318,7 @@ class DataSyncService {
         DO UPDATE SET 
           name = EXCLUDED.name,
           shopify_updated_at = EXCLUDED.shopify_updated_at,
-          updated_at = NOW()
+          updated_at = NOW(),
           cancelled_at = EXCLUDED.cancelled_at
         RETURNING id
       `,
@@ -327,9 +328,9 @@ class DataSyncService {
           shopDomain,
           orderData.createdAt,
           orderData.updatedAt,
-          orderData.cancelledAt,
+          orderData.cancelledAt || null,
         ]
-      );
+      );      
 
       const orderId = orderResult.rows[0].id;
 
@@ -499,7 +500,7 @@ class DataSyncService {
     const transformedData = {
       id: `gid://shopify/Order/${orderData.id}`,
       name: orderData.name,
-      cancelledAt: orderData.cancelled_at || orderData.cancelledAt || null,
+      cancelledAt: orderData.cancelled_at || null,
       lineItems: {
         edges: orderData.line_items.map((item) => ({
           node: {

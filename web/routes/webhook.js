@@ -34,6 +34,7 @@ router.post("/orders", verifyWebhook, async (req, res) => {
       name: rawOrderData.name,
       created_at: rawOrderData.created_at,
       updated_at: rawOrderData.updated_at,
+      cancelled_at: rawOrderData.cancelled_at,
       line_items: rawOrderData.line_items.map((item) => ({
         id: item.id,
         title: item.title,
