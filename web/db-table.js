@@ -105,7 +105,8 @@ try {
       quantity INT NOT NULL,
       notification BOOLEAN DEFAULT FALSE,
       shop_domain VARCHAR(50) NOT NULL REFERENCES users(shop_domain) ON DELETE CASCADE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT order_line_unique UNIQUE(order_id, product_id)
     );
 
     -- 📊 Sync Log Table (for tracking sync operations)

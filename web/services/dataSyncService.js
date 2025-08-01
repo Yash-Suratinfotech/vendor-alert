@@ -329,52 +329,66 @@ class DataSyncService {
           orderData.updatedAt,
           orderData.cancelledAt || null,
         ]
-      );      
+      );
 
       const orderId = orderResult.rows[0].id;
 
-      // Process line items and create products/vendors as needed
+      const itemMap = new Map();
+
       for (const lineItemEdge of orderData.lineItems.edges) {
-        const lineItem = lineItemEdge.node;
+        const item = lineItemEdge.node;
+        if (!item.product?.id) continue;
 
-        // Skip if no product data
-        if (!lineItem.product?.id) continue;
+        const productId = parseInt(
+          item.product.id.replace("gid://shopify/Product/", "")
+        );
+        const key = `${productId}`;
 
+        if (!itemMap.has(key)) {
+          itemMap.set(key, {
+            item,
+            quantity: item.quantity,
+          });
+        } else {
+          itemMap.get(key).quantity += item.quantity; // sum duplicates
+        }
+      }
+
+      // Now loop through unique products with summed quantities
+      for (const [_, { item, quantity }] of itemMap.entries()) {
         const shopifyProductId = parseInt(
-          lineItem.product.id.replace("gid://shopify/Product/", "")
+          item.product.id.replace("gid://shopify/Product/", "")
         );
 
-        // Create/Update Vendor if exists
         let vendorId = null;
-        if (lineItem.vendor) {
+        if (item.vendor) {
           vendorId = await this.ensureVendorExists(
-            lineItem.vendor,
+            item.vendor,
             shopDomain,
             client
           );
         }
 
-        // Create/Update Product (no duplicates)
         const productId = await this.ensureProductExists(
           {
             shopifyProductId,
-            title: lineItem.title,
-            image: lineItem.image?.url,
-            vendorName: lineItem.vendor,
+            title: item.title,
+            image: item.image?.url,
+            vendorName: item.vendor,
             vendorId,
             shopDomain,
           },
           client
         );
 
-        // Create Line Item
         await client.query(
           `
           INSERT INTO order_line_items (
             order_id, product_id, quantity, shop_domain
           ) VALUES ($1, $2, $3, $4)
-        `,
-          [orderId, productId, lineItem.quantity, shopDomain]
+          ON CONFLICT (order_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity
+          `,
+          [orderId, productId, quantity, shopDomain]
         );
       }
 
